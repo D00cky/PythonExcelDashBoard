@@ -119,6 +119,77 @@ class SabespPimentasTemplate:
             )
         return rows
 
+    def extract_team_detail(self, path: Path, team_name: str) -> dict[str, dict]:
+        """Per-service breakdown for one team.
+
+        Returns {service: {conforme, nao_conforme, sem_foto, nao_avaliado,
+        inspecoes, top_nc_reason, top_sf_reason, tss_summary}}. Reasons
+        are tuples (text, count) of the most common observation paired
+        with NC / SF stage cells. tss_summary is [(tss, count), ...].
+        """
+        target = team_name.strip()
+        result: dict[str, dict] = {}
+        for service in sorted(self.SERVICE_SHEETS):
+            try:
+                df = pd.read_excel(path, sheet_name=service, engine="openpyxl")
+            except (ValueError, KeyError):
+                continue
+            df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+            team_col = _ci_column(df, "EQUIPE")
+            tss_col = _ci_column(df, "Descrição TSS")
+            if team_col is None:
+                continue
+            sub = df[df[team_col].astype(str).str.strip() == target]
+            if sub.empty:
+                continue
+
+            pairs = _stage_observation_pairs(sub, exclude={team_col, tss_col})
+            stage_cols = [s for s, _ in pairs]
+            stages = sub[stage_cols].astype(str).apply(lambda s: s.str.strip())
+            flat = stages.values.ravel()
+            counts = pd.Series(flat).value_counts()
+
+            nc_reasons: list[str] = []
+            sf_reasons: list[str] = []
+            for stage_col, obs_col in pairs:
+                if obs_col is None:
+                    continue
+                stage_norm = sub[stage_col].astype(str).str.strip()
+                nc_reasons.extend(
+                    sub.loc[stage_norm == "NC", obs_col].dropna().astype(str).tolist()
+                )
+                sf_reasons.extend(
+                    sub.loc[stage_norm == "SF", obs_col].dropna().astype(str).tolist()
+                )
+
+            top_nc = pd.Series(nc_reasons).value_counts().head(1) if nc_reasons else None
+            top_sf = pd.Series(sf_reasons).value_counts().head(1) if sf_reasons else None
+
+            tss_summary: list[tuple[str, int]] = []
+            if tss_col is not None:
+                tss_counts = sub[tss_col].dropna().astype(str).value_counts().head(10)
+                tss_summary = [(str(k), int(v)) for k, v in tss_counts.items()]
+
+            result[service] = {
+                "inspecoes": int(len(sub)),
+                "conforme": int(counts.get("C", 0)),
+                "nao_conforme": int(counts.get("NC", 0)),
+                "sem_foto": int(counts.get("SF", 0)),
+                "nao_avaliado": int(counts.get("NA", 0)),
+                "top_nc_reason": (
+                    (str(top_nc.index[0]), int(top_nc.iloc[0]))
+                    if top_nc is not None and not top_nc.empty
+                    else None
+                ),
+                "top_sf_reason": (
+                    (str(top_sf.index[0]), int(top_sf.iloc[0]))
+                    if top_sf is not None and not top_sf.empty
+                    else None
+                ),
+                "tss_summary": tss_summary,
+            }
+        return result
+
     def extract_inspections(self, path: Path) -> pd.DataFrame:
         """Read the four service sheets, return one row per inspection.
 
@@ -404,6 +475,22 @@ def _conformity_chart(
             legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
         ),
     )
+
+
+def _stage_observation_pairs(df: pd.DataFrame, exclude: set) -> list[tuple[str, str | None]]:
+    """For each detected stage column, pair it with the following column iff
+    that column's name starts with 'Observa' (case-insensitive)."""
+    stages = _detect_stage_columns(df, exclude=exclude)
+    cols = list(df.columns)
+    pairs: list[tuple[str, str | None]] = []
+    for stage in stages:
+        idx = cols.index(stage)
+        candidate = cols[idx + 1] if idx + 1 < len(cols) else None
+        if isinstance(candidate, str) and candidate.casefold().startswith("observa"):
+            pairs.append((stage, candidate))
+        else:
+            pairs.append((stage, None))
+    return pairs
 
 
 def _detect_stage_columns(df: pd.DataFrame, exclude: set) -> list[str]:

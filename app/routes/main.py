@@ -56,6 +56,28 @@ def dashboard(upload_id: str) -> str:
     )
 
 
+@bp.get("/dashboard/<upload_id>/team")
+def team_detail(upload_id: str) -> str:
+    team_name = (request.args.get("name") or "").strip()
+    if not team_name:
+        abort(400)
+    path = _upload_path(upload_id)
+    workbook = load_workbook(path, data_only=True)
+    template = recognize(workbook.sheetnames)
+    if not isinstance(template, SabespPimentasTemplate):
+        abort(404)
+    detail = template.extract_team_detail(path, team_name)
+    if not detail:
+        abort(404)
+    return render_template(
+        "team_detail.html",
+        polo_name=template.polo_name.title(),
+        team_name=team_name,
+        dashboard_url=url_for("main.dashboard", upload_id=upload_id),
+        detail=detail,
+    )
+
+
 _SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx"}
 
 
@@ -104,6 +126,9 @@ def _build_sabesp_context(
     iqs_rows = template.extract_iqs_by_service(workbook)
     inspections = template.extract_inspections(path)
     periodo = _periodo_from_inspections(inspections) or template.extract_periodo(workbook)
+    teams_sorted = (
+        sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
+    )
 
     per_service_sections = []
     for idx, service in enumerate(sorted(template.SERVICE_SHEETS)):
@@ -141,4 +166,5 @@ def _build_sabesp_context(
             include_plotlyjs=False, full_html=False, div_id="tss-distribution"
         ),
         "per_service_sections": per_service_sections,
+        "teams_sorted": teams_sorted,
     }

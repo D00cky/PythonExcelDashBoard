@@ -6,6 +6,9 @@
     <style>
         body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem; color: #1a1a1a; }
         header { border-bottom: 1px solid #ddd; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        .topbar { margin-bottom: 0.75rem; }
+        .home-link { color: #2a9d8f; text-decoration: none; font-size: 0.92rem; font-weight: 500; }
+        .home-link:hover { text-decoration: underline; }
         h1 { margin: 0; color: #264653; }
         .periodo { color: #555; margin-top: 0.25rem; }
         .kpi-row { display: flex; gap: 1.5rem; margin: 1.5rem 0; flex-wrap: wrap; }
@@ -20,6 +23,8 @@
         .download select { padding: 0.5rem; font-size: 0.95rem; border-radius: 6px; border: 1px solid #ccc; }
         .download button { padding: 0.6rem 1.25rem; background: #264653; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; }
         .download button:hover { background: #1c343f; }
+        .action-row { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; margin: 1.5rem 0; }
+        .action-row .download { margin: 0; }
         .service-section { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid #e0e6e4; }
         .service-section h2 { margin: 0 0 1rem; color: #264653; font-size: 1.4rem; }
         .chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
@@ -28,6 +33,7 @@
 </head>
 <body>
     <header>
+        <div class="topbar"><a href="/" class="home-link">← Página inicial / Novo dashboard</a></div>
         <h1>Dashboard SABESP — Polo {{ polo_name }}</h1>
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong></div>{% endif %}
     </header>
@@ -58,16 +64,28 @@
     </div>
 
     {% if download_action %}
-    <form class="download" action="{{ download_action }}" method="get">
-        <label for="fmt">Baixar como:</label>
-        <select id="fmt" name="fmt">
-            <option value="md">.md (Markdown)</option>
-            <option value="xlsx">.xlsx (Excel)</option>
-            <option value="pdf">.pdf (PDF)</option>
-            <option value="docx">.docx (Word)</option>
-        </select>
-        <button type="submit">⬇ Baixar</button>
-    </form>
+    <div class="action-row">
+        <form class="download" action="{{ download_action }}" method="get">
+            <label for="fmt">Baixar como:</label>
+            <select id="fmt" name="fmt">
+                <option value="md">.md (Markdown)</option>
+                <option value="xlsx">.xlsx (Excel)</option>
+                <option value="pdf">.pdf (PDF)</option>
+                <option value="docx">.docx (Word)</option>
+            </select>
+            <button type="submit">⬇ Baixar</button>
+        </form>
+
+        {% if teams_sorted %}
+        <form class="download" action="/dashboard/{{ download_action.split('/')[2] }}/team" method="get">
+            <label for="team">Detalhar equipe:</label>
+            <select id="team" name="name">
+                {% for t in teams_sorted %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+            </select>
+            <button type="submit">👤 Ver detalhe</button>
+        </form>
+        {% endif %}
+    </div>
     {% endif %}
 
     <div class="chart">{{ fig_ic_bar | safe }}</div>

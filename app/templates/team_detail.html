@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ team_name }} — Detalhe da Equipe</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 0 auto; padding: 1.5rem; color: #1a1a1a; }
+        header { border-bottom: 1px solid #ddd; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        header a { color: #2a9d8f; text-decoration: none; font-size: 0.9rem; }
+        header a:hover { text-decoration: underline; }
+        h1 { margin: 0.5rem 0 0.2rem; color: #264653; font-size: 1.8rem; }
+        .polo { color: #666; font-size: 0.95rem; }
+        .service { background: white; border: 1px solid #e2e8e6; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+        .service h2 { margin: 0 0 1rem; color: #2a9d8f; font-size: 1.4rem; }
+        .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+        .count-card { padding: 0.9rem 1rem; border-radius: 8px; text-align: center; }
+        .count-card.conforme { background: #e0f3ef; color: #1d6c5e; }
+        .count-card.nao-conforme { background: #fce4dc; color: #b14732; }
+        .count-card.sem-foto { background: #fff3d6; color: #8a6900; }
+        .count-card.nao-avaliado { background: #ebeef0; color: #555; }
+        .count-card.inspecoes { background: #2a9d8f; color: white; }
+        .count-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
+        .count-label { font-size: 0.78rem; margin-top: 0.25rem; letter-spacing: 0.02em; text-transform: uppercase; }
+        .reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+        @media (max-width: 720px) { .reasons { grid-template-columns: 1fr; } }
+        .reason-box { padding: 0.85rem 1rem; border-radius: 8px; background: #f7f9f8; border-left: 4px solid #e76f51; }
+        .reason-box.sf { border-left-color: #e9c46a; }
+        .reason-title { font-size: 0.8rem; color: #555; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+        .reason-text { font-weight: 600; color: #264653; }
+        .reason-count { color: #888; font-size: 0.85rem; margin-top: 0.2rem; }
+        .empty { color: #999; font-style: italic; font-size: 0.9rem; }
+        .tss-list { margin-top: 0.5rem; }
+        .tss-list h3 { font-size: 0.95rem; color: #555; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.04em; }
+        .tss-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+        .tss-table th, .tss-table td { padding: 0.45rem 0.6rem; border-bottom: 1px solid #eef1f0; text-align: left; }
+        .tss-table th { color: #555; font-weight: 600; }
+        .tss-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: #2a9d8f; font-weight: 600; }
+        .empty-state { text-align: center; padding: 3rem; color: #888; }
+        .footnote { margin-top: 1.5rem; color: #888; font-size: 0.85rem; padding: 0.75rem 1rem; background: #f7f9f8; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="{{ dashboard_url }}">← Voltar para o Dashboard</a>
+        <h1>{{ team_name }}</h1>
+        <div class="polo">Polo {{ polo_name }} — Detalhe por Serviço</div>
+    </header>
+
+    {% if detail %}
+        {% for service, info in detail.items() %}
+        <section class="service">
+            <h2>{{ service }}</h2>
+            <div class="counts">
+                <div class="count-card inspecoes">
+                    <div class="count-value">{{ info.inspecoes }}</div>
+                    <div class="count-label">Inspeções</div>
+                </div>
+                <div class="count-card conforme">
+                    <div class="count-value">{{ info.conforme }}</div>
+                    <div class="count-label">Conforme</div>
+                </div>
+                <div class="count-card nao-conforme">
+                    <div class="count-value">{{ info.nao_conforme }}</div>
+                    <div class="count-label">Não Conforme</div>
+                </div>
+                <div class="count-card sem-foto">
+                    <div class="count-value">{{ info.sem_foto }}</div>
+                    <div class="count-label">Sem Foto</div>
+                </div>
+                <div class="count-card nao-avaliado">
+                    <div class="count-value">{{ info.nao_avaliado }}</div>
+                    <div class="count-label">Não Avaliado</div>
+                </div>
+            </div>
+
+            <div class="reasons">
+                <div class="reason-box">
+                    <div class="reason-title">Maior motivo de NC</div>
+                    {% if info.top_nc_reason %}
+                        <div class="reason-text">{{ info.top_nc_reason[0] }}</div>
+                        <div class="reason-count">aparece {{ info.top_nc_reason[1] }} vez(es)</div>
+                    {% else %}
+                        <div class="empty">Nenhuma observação de NC registrada.</div>
+                    {% endif %}
+                </div>
+                <div class="reason-box sf">
+                    <div class="reason-title">Maior motivo de Sem Foto</div>
+                    {% if info.top_sf_reason %}
+                        <div class="reason-text">{{ info.top_sf_reason[0] }}</div>
+                        <div class="reason-count">aparece {{ info.top_sf_reason[1] }} vez(es)</div>
+                    {% else %}
+                        <div class="empty">Nenhuma observação de SF registrada.</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if info.tss_summary %}
+            <div class="tss-list">
+                <h3>Serviços (TSS) realizados</h3>
+                <table class="tss-table">
+                    <thead><tr><th>Descrição</th><th>Qtd</th></tr></thead>
+                    <tbody>
+                        {% for tss, count in info.tss_summary %}
+                        <tr><td>{{ tss }}</td><td>{{ count }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+        </section>
+        {% endfor %}
+    {% else %}
+        <div class="empty-state">Nenhuma inspeção encontrada para essa equipe.</div>
+    {% endif %}
+
+    <div class="footnote">
+        <strong>Conforme</strong> é o único resultado positivo. <strong>Não Conforme</strong> e <strong>Sem Foto</strong> contam como falhas; <strong>Não Avaliado</strong> é informativo (etapa não aplicável ao serviço, sem penalidade).
+    </div>
+</body>
+</html>
