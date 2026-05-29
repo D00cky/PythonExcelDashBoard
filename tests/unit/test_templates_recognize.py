@@ -8,3 +8,15 @@ def test_recognize_returns_sabesp_template_when_signature_matches():
     result = recognize(sheets)
 
     assert isinstance(result, SabespPimentasTemplate)
+
+
+def test_recognize_returns_none_for_unknown_signature():
+    sheets = ["Sheet1", "Sheet2", "Sheet3"]
+
+    assert recognize(sheets) is None
+
+
+def test_recognize_returns_none_when_only_one_service_sheet_present():
+    sheets = ["CAPA", "DADOS - PIMENTAS", "ÁGUA"]
+
+    assert recognize(sheets) is None
