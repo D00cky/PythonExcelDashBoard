@@ -2,18 +2,19 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
+# Each row: (team, tss, fachada_stage, sinalizacao_stage). Stage values are 'C', 'NC' or 'SF'.
 _INSPECTION_ROWS = {
     "ÁGUA": [
-        ("JOSIAS ALMEIDA FRANCISCO", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
-        ("JOSIAS ALMEIDA FRANCISCO", "VAZAMENTO DE ÁGUA NO PASSEIO"),
-        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
-        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
-        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
+        ("JOSIAS ALMEIDA FRANCISCO", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "C"),
+        ("JOSIAS ALMEIDA FRANCISCO", "VAZAMENTO DE ÁGUA NO PASSEIO", "C", "NC"),
+        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "NC", "NC"),
+        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "SF"),
+        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "NC"),
     ],
     "ESGOTO": [
-        ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO"),
-        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "VAZAMENTO DE ESGOTO"),
-        ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO"),
+        ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C"),
+        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "VAZAMENTO DE ESGOTO", "NC", "NC"),
+        ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C"),
     ],
 }
 
@@ -78,10 +79,14 @@ def make_minimal_sabesp(
             ws["A1"] = "Unidade Executante"
             ws["C1"] = "Descrição TSS"
             ws["N1"] = "EQUIPE"
-            for i, (team, tss) in enumerate(rows, start=2):
+            ws["O1"] = "FACHADA"
+            ws["Q1"] = "SINALIZAÇÃO"
+            for i, (team, tss, fachada, sinalizacao) in enumerate(rows, start=2):
                 ws[f"A{i}"] = "TEST"
                 ws[f"C{i}"] = tss
                 ws[f"N{i}"] = team
+                ws[f"O{i}"] = fachada
+                ws[f"Q{i}"] = sinalizacao
 
     path = tmp_path / "sabesp.xlsx"
     wb.save(path)

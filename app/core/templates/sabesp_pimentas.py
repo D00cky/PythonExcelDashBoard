@@ -122,10 +122,10 @@ class SabespPimentasTemplate:
     def extract_inspections(self, path: Path) -> pd.DataFrame:
         """Read the four service sheets, return one row per inspection.
 
-        Columns: team (col 'EQUIPE'/'Equipe'), tss (col 'Descrição TSS'), service.
-        Column header capitalisation varies between sheets (ÁGUA spells it 'EQUIPE'
-        upper-case, ESGOTO/CAVALETE/REPOSIÇÃO use 'Equipe' title-case) - case-
-        insensitive lookup handles both. Rows missing either field are dropped.
+        Columns: team, tss, service, conforme_count, nao_conforme_count.
+        Stage columns (those whose only non-null values are in {C, NC, SF, NA})
+        are auto-detected per sheet; conforme_count is the count of 'C' cells
+        across stage columns per row, nao_conforme_count the count of 'NC'.
         """
         parts: list[pd.DataFrame] = []
         for service in sorted(self.SERVICE_SHEETS):
@@ -139,12 +139,24 @@ class SabespPimentasTemplate:
             if team_col is None or tss_col is None:
                 continue
             df = df.dropna(subset=[team_col, tss_col])
+
+            stage_cols = _detect_stage_columns(df, exclude={team_col, tss_col})
+            if stage_cols:
+                stages = df[stage_cols].astype(str).apply(lambda s: s.str.strip())
+                df["conforme_count"] = (stages == "C").sum(axis=1)
+                df["nao_conforme_count"] = (stages == "NC").sum(axis=1)
+            else:
+                df["conforme_count"] = 0
+                df["nao_conforme_count"] = 0
+
             df = df.rename(columns={team_col: "team", tss_col: "tss"})
-            df = df[["team", "tss"]].copy()
+            df = df[["team", "tss", "conforme_count", "nao_conforme_count"]].copy()
             df["service"] = service
             parts.append(df)
         if not parts:
-            return pd.DataFrame(columns=["team", "tss", "service"])
+            return pd.DataFrame(
+                columns=["team", "tss", "service", "conforme_count", "nao_conforme_count"]
+            )
         return pd.concat(parts, ignore_index=True)
 
     def build_service_iqs_bar(self, rows: list[ServiceIQS]) -> go.Figure:
@@ -316,3 +328,21 @@ def _ci_column(df: pd.DataFrame, target: str) -> str | None:
         if isinstance(col, str) and col.casefold() == target_lower:
             return col
     return None
+
+
+_STAGE_CODE_VALUES = frozenset({"C", "NC", "SF", "NA"})
+
+
+def _detect_stage_columns(df: pd.DataFrame, exclude: set) -> list[str]:
+    """Return columns whose every non-null value is one of {C, NC, SF, NA}."""
+    cols: list[str] = []
+    for col in df.columns:
+        if col in exclude:
+            continue
+        non_null = df[col].dropna()
+        if len(non_null) == 0:
+            continue
+        as_str = non_null.astype(str).str.strip()
+        if as_str.isin(_STAGE_CODE_VALUES).all():
+            cols.append(col)
+    return cols
