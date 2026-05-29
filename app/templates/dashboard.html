@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Dashboard SABESP — Polo Pimentas</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem; color: #1a1a1a; }
+        header { border-bottom: 1px solid #ddd; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        h1 { margin: 0; color: #264653; }
+        .periodo { color: #555; margin-top: 0.25rem; }
+        .kpi-row { display: flex; gap: 1.5rem; margin: 1.5rem 0; flex-wrap: wrap; }
+        .kpi-card { background: #f1f5f4; padding: 1rem 1.5rem; border-radius: 8px; flex: 1 1 200px; text-align: center; border: 1px solid #e0e6e4; }
+        .kpi-value { font-size: 2.5rem; font-weight: 700; color: #2a9d8f; line-height: 1; }
+        .kpi-value.amber { color: #e9c46a; }
+        .kpi-value.red { color: #e76f51; }
+        .kpi-label { color: #555; margin-top: 0.5rem; font-size: 0.9rem; }
+        .chart { margin: 2rem 0; }
+        footer { color: #888; font-size: 0.85rem; margin-top: 2rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Dashboard SABESP — Polo Pimentas</h1>
+        {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong></div>{% endif %}
+    </header>
+
+    {% if iqs_overall is not none %}
+    <div class="kpi-row">
+        <div class="kpi-card">
+            {% set pct = iqs_overall * 100 %}
+            {% if pct >= 80 %}{% set cls = "" %}
+            {% elif pct >= 60 %}{% set cls = "amber" %}
+            {% else %}{% set cls = "red" %}{% endif %}
+            <div class="kpi-value {{ cls }}">{{ "%.1f"|format(pct) }}%</div>
+            <div class="kpi-label">IQS — Índice de Qualidade SABESP</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="chart">{{ fig_iqs_bar | safe }}</div>
+    <div class="chart">{{ fig_photos | safe }}</div>
+
+    <footer>Gerado a partir de Relatório Semanal — Polo Pimentas</footer>
+</body>
+</html>

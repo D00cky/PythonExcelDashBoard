@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Arquivo não reconhecido</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 700px; margin: 3rem auto; padding: 1rem; color: #1a1a1a; }
+        h1 { color: #e76f51; }
+        ul { background: #f5f5f5; padding: 1rem 1rem 1rem 2.5rem; border-radius: 6px; }
+    </style>
+</head>
+<body>
+    <h1>Arquivo não reconhecido</h1>
+    <p>Este arquivo não corresponde a um modelo conhecido pelo sistema. Os modelos suportados serão expandidos em breve.</p>
+    <p>Planilhas encontradas no arquivo enviado:</p>
+    <ul>
+        {% for name in sheet_names %}<li>{{ name }}</li>{% endfor %}
+    </ul>
+    <p><a href="/">← Enviar outro arquivo</a></p>
+</body>
+</html>
