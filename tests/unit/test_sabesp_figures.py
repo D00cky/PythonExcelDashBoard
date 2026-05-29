@@ -17,3 +17,15 @@ def test_build_service_iqs_bar_has_one_bar_per_service():
     assert len(fig.data) == 1
     assert tuple(fig.data[0].x) == ("Água", "Esgoto", "Cavalete", "Reposição")
     assert tuple(fig.data[0].y) == (0.5, 0.5152, 0.8220, 0.8065)
+
+
+def test_build_photo_conformity_stacked_has_nc_and_conforme_traces():
+    fig = SabespPimentasTemplate().build_photo_conformity_stacked(_ROWS)
+
+    assert isinstance(fig, go.Figure)
+    assert fig.layout.barmode == "stack"
+    assert len(fig.data) == 2
+    by_name = {trace.name: trace for trace in fig.data}
+    assert tuple(by_name["Não Conforme"].y) == (91, 16, 13, 6)
+    assert tuple(by_name["Conforme"].y) == (91, 17, 60, 25)
+    assert tuple(by_name["Conforme"].x) == ("Água", "Esgoto", "Cavalete", "Reposição")

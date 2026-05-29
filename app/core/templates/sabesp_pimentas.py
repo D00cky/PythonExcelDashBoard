@@ -92,3 +92,29 @@ class SabespPimentasTemplate:
                 template="plotly_white",
             ),
         )
+
+    def build_photo_conformity_stacked(self, rows: list[ServiceIQS]) -> go.Figure:
+        names = [r.name for r in rows]
+        return go.Figure(
+            data=[
+                go.Bar(
+                    name="Não Conforme",
+                    x=names,
+                    y=[r.fotos_nc for r in rows],
+                    marker_color="#e76f51",
+                ),
+                go.Bar(
+                    name="Conforme",
+                    x=names,
+                    y=[r.fotos_conforme for r in rows],
+                    marker_color="#2a9d8f",
+                ),
+            ],
+            layout=go.Layout(
+                barmode="stack",
+                title="Fotos Avaliadas por Serviço",
+                yaxis={"title": "Quantidade de fotos"},
+                xaxis={"title": "Serviço"},
+                template="plotly_white",
+            ),
+        )
