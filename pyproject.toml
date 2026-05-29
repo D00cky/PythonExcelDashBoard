@@ -1,5 +1,6 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = [
     "slow: tests that exercise the real Model/*.xlsx (deselect with -m 'not slow')",
 ]

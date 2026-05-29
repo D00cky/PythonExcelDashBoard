@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Excel Dashboard</title>
+</head>
+<body>
+    <h1>Upload de Planilha</h1>
+    <form method="post" action="/upload" enctype="multipart/form-data">
+        <label for="file">Arquivo .xlsx</label>
+        <input id="file" type="file" name="file" accept=".xlsx" required>
+        <button type="submit">Gerar dashboard</button>
+    </form>
+</body>
+</html>
