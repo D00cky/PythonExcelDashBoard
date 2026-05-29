@@ -48,3 +48,49 @@ def test_build_ic_bar_has_one_bar_per_service():
     assert len(fig.data) == 1
     assert tuple(fig.data[0].x) == ("Água", "Esgoto", "Reposição")
     assert tuple(fig.data[0].y) == (1.0, 0.5, 0.1)
+
+
+def test_build_team_service_stacked_orders_by_total_descending_and_dedupes():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "team": ["A", "A", "A", "B", "B", "C"],
+            "tss": ["t"] * 6,
+            "service": ["ÁGUA", "ESGOTO", "ÁGUA", "ÁGUA", "ESGOTO", "ÁGUA"],
+        }
+    )
+
+    fig = SabespPimentasTemplate().build_team_service_stacked(df, top_n=3)
+
+    assert isinstance(fig, go.Figure)
+    assert fig.layout.barmode == "stack"
+    # Horizontal bar: y is team, x is count. Highest count first (top of chart),
+    # so plotly's y-axis (which puts the first item at the bottom) gets reversed.
+    first = fig.data[0]
+    assert tuple(first.y) == ("C", "B", "A")
+    # Same y order across all traces (one per service present)
+    for trace in fig.data:
+        assert tuple(trace.y) == ("C", "B", "A")
+
+
+def test_build_tss_distribution_top_n_horizontal_bar():
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "team": ["t"] * 10,
+            "tss": ["A", "A", "A", "B", "B", "C", "D", "D", "D", "D"],
+            "service": ["ÁGUA"] * 10,
+        }
+    )
+
+    fig = SabespPimentasTemplate().build_tss_distribution(df, top_n=3)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
+    trace = fig.data[0]
+    assert trace.orientation == "h"
+    # Top 3 TSS by count: D (4), A (3), B (2). Reversed for y-axis display.
+    assert tuple(trace.y) == ("B", "A", "D")
+    assert tuple(trace.x) == (2, 3, 4)

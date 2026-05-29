@@ -211,6 +211,104 @@ class SabespPimentasTemplate:
             ),
         )
 
+    def build_tss_distribution(self, df: pd.DataFrame, top_n: int = 15) -> go.Figure:
+        if df.empty:
+            return _empty_figure("Sem inspeções registradas")
+
+        counts = df.groupby("tss").size().sort_values(ascending=False).head(top_n)
+        labels = list(reversed(counts.index))
+        values = list(reversed(counts.values))
+
+        return go.Figure(
+            data=[
+                go.Bar(
+                    x=values,
+                    y=labels,
+                    orientation="h",
+                    marker_color="#457b9d",
+                    text=values,
+                    textposition="outside",
+                )
+            ],
+            layout=go.Layout(
+                title=f"Tipos de Serviço (TSS) — Top {len(labels)}",
+                xaxis={"title": "Quantidade de inspeções"},
+                yaxis={"title": "Descrição TSS", "automargin": True},
+                template="plotly_white",
+                height=max(400, 30 * len(labels) + 100),
+                margin={"l": 280},
+            ),
+        )
+
+    def build_team_service_stacked(self, df: pd.DataFrame, top_n: int = 15) -> go.Figure:
+        if df.empty:
+            return _empty_figure("Sem inspeções registradas")
+
+        team_totals = df.groupby("team").size().sort_values(ascending=False).head(top_n)
+        teams = list(reversed(team_totals.index))  # plotly y starts at bottom
+
+        pivot = (
+            df[df["team"].isin(teams)]
+            .groupby(["team", "service"])
+            .size()
+            .unstack(fill_value=0)
+            .reindex(teams)
+        )
+
+        traces = []
+        for service in sorted(self.SERVICE_SHEETS):
+            if service not in pivot.columns:
+                continue
+            traces.append(
+                go.Bar(
+                    name=service,
+                    y=teams,
+                    x=pivot[service].tolist(),
+                    orientation="h",
+                    marker_color=_SERVICE_COLORS.get(service, "#888"),
+                )
+            )
+
+        return go.Figure(
+            data=traces,
+            layout=go.Layout(
+                barmode="stack",
+                title=f"Inspeções por Equipe (Top {len(teams)})",
+                xaxis={"title": "Quantidade de inspeções"},
+                yaxis={"title": "Equipe", "automargin": True},
+                template="plotly_white",
+                height=max(400, 30 * len(teams) + 100),
+                legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+            ),
+        )
+
+
+_SERVICE_COLORS = {
+    "ÁGUA": "#2a9d8f",
+    "ESGOTO": "#264653",
+    "CAVALETE": "#e9c46a",
+    "REPOSIÇÃO": "#e76f51",
+}
+
+
+def _empty_figure(message: str) -> go.Figure:
+    return go.Figure(
+        layout=go.Layout(
+            template="plotly_white",
+            annotations=[
+                {
+                    "text": message,
+                    "showarrow": False,
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.5,
+                    "y": 0.5,
+                    "font": {"size": 14, "color": "#888"},
+                }
+            ],
+        )
+    )
+
 
 def _ci_column(df: pd.DataFrame, target: str) -> str | None:
     target_lower = target.casefold()
