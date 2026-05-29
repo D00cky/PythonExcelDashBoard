@@ -1,7 +1,17 @@
 import uuid
 from pathlib import Path
+from typing import Any, Literal
 
-from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    current_app,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from openpyxl import load_workbook
 
 from app.core.templates import recognize
@@ -33,28 +43,69 @@ def upload():
 
 @bp.get("/dashboard/<upload_id>")
 def dashboard(upload_id: str) -> str:
-    path = Path(current_app.instance_path) / "uploads" / f"{upload_id}.xlsx"
-    if not path.exists():
-        abort(404)
-
+    path = _upload_path(upload_id)
     workbook = load_workbook(path, data_only=True)
     template = recognize(workbook.sheetnames)
     if not isinstance(template, SabespPimentasTemplate):
         return render_template("dashboard_unknown.html", sheet_names=workbook.sheetnames)
 
-    ic_rows = template.extract_ic_by_service(workbook)
-    iqs_rows = template.extract_iqs_by_service(workbook)
-    ic_bar = template.build_ic_bar(ic_rows)
-    iqs_bar = template.build_service_iqs_bar(iqs_rows)
-    photos = template.build_photo_conformity_stacked(iqs_rows)
-
     return render_template(
         "dashboard.html",
-        periodo=template.extract_periodo(workbook),
-        iqs_overall=template.extract_iqs_overall(workbook),
-        total_lvs=sum(r.lvs for r in ic_rows),
-        total_fotos=sum(r.fotos_avaliadas for r in iqs_rows),
-        fig_ic_bar=ic_bar.to_html(include_plotlyjs="cdn", full_html=False, div_id="ic-bar"),
-        fig_iqs_bar=iqs_bar.to_html(include_plotlyjs=False, full_html=False, div_id="iqs-bar"),
-        fig_photos=photos.to_html(include_plotlyjs=False, full_html=False, div_id="photos"),
+        download_url=url_for("main.download", upload_id=upload_id, fmt="html"),
+        **_build_sabesp_context(template, workbook, plotly_mode="cdn"),
     )
+
+
+@bp.get("/download/<upload_id>")
+def download(upload_id: str) -> Response:
+    fmt = request.args.get("fmt", "html").lower()
+    if fmt != "html":
+        abort(400)
+
+    path = _upload_path(upload_id)
+    workbook = load_workbook(path, data_only=True)
+    template = recognize(workbook.sheetnames)
+    if not isinstance(template, SabespPimentasTemplate):
+        abort(404)
+
+    html = render_template(
+        "dashboard.html",
+        download_url=None,
+        **_build_sabesp_context(template, workbook, plotly_mode="inline"),
+    )
+    response = Response(html, mimetype="text/html")
+    response.headers["Content-Disposition"] = (
+        f'attachment; filename="dashboard-{upload_id}.html"'
+    )
+    return response
+
+
+def _upload_path(upload_id: str) -> Path:
+    path = Path(current_app.instance_path) / "uploads" / f"{upload_id}.xlsx"
+    if not path.exists():
+        abort(404)
+    return path
+
+
+def _build_sabesp_context(
+    template: SabespPimentasTemplate,
+    workbook,
+    plotly_mode: Literal["cdn", "inline"],
+) -> dict[str, Any]:
+    ic_rows = template.extract_ic_by_service(workbook)
+    iqs_rows = template.extract_iqs_by_service(workbook)
+    return {
+        "periodo": template.extract_periodo(workbook),
+        "iqs_overall": template.extract_iqs_overall(workbook),
+        "total_lvs": sum(r.lvs for r in ic_rows),
+        "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
+        "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
+            include_plotlyjs=plotly_mode, full_html=False, div_id="ic-bar"
+        ),
+        "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
+            include_plotlyjs=False, full_html=False, div_id="iqs-bar"
+        ),
+        "fig_photos": template.build_photo_conformity_stacked(iqs_rows).to_html(
+            include_plotlyjs=False, full_html=False, div_id="photos"
+        ),
+    }

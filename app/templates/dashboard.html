@@ -16,6 +16,9 @@
         .kpi-label { color: #555; margin-top: 0.5rem; font-size: 0.9rem; }
         .chart { margin: 2rem 0; }
         footer { color: #888; font-size: 0.85rem; margin-top: 2rem; text-align: center; }
+        .download { margin: 1.5rem 0; }
+        .download a { display: inline-block; padding: 0.6rem 1.25rem; background: #264653; color: white; border-radius: 6px; text-decoration: none; font-size: 0.95rem; }
+        .download a:hover { background: #1c343f; }
     </style>
 </head>
 <body>
@@ -48,6 +51,12 @@
         </div>
         {% endif %}
     </div>
+
+    {% if download_url %}
+    <div class="download">
+        <a href="{{ download_url }}" download>⬇ Baixar dashboard (HTML offline)</a>
+    </div>
+    {% endif %}
 
     <div class="chart">{{ fig_ic_bar | safe }}</div>
     <div class="chart">{{ fig_iqs_bar | safe }}</div>
