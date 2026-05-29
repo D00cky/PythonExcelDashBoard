@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 
 def test_index_route_serves_upload_form(client):
@@ -23,3 +24,20 @@ def test_upload_rejects_non_xlsx_extension_with_400(client):
     )
 
     assert response.status_code == 400
+
+
+def test_upload_persists_file_and_303_redirects_to_dashboard(client, app):
+    payload = b"xlsx-bytes-stand-in"
+
+    response = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(payload), "report.xlsx")},
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 303
+    assert response.location.startswith("/dashboard/")
+
+    upload_id = response.location.removeprefix("/dashboard/")
+    saved = Path(app.instance_path) / "uploads" / f"{upload_id}.xlsx"
+    assert saved.read_bytes() == payload
