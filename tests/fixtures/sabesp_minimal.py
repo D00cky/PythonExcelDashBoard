@@ -1,20 +1,22 @@
+from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook
 
-# Each row: (team, tss, fachada_stage, sinalizacao_stage). Stage values are 'C', 'NC' or 'SF'.
+# Each row: (team, tss, fachada_stage, sinalizacao_stage, start_date).
+# Stage values are 'C', 'NC' or 'SF'. Dates span 2026-03-05 to 2026-03-29.
 _INSPECTION_ROWS = {
     "ÁGUA": [
-        ("JOSIAS ALMEIDA FRANCISCO", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "C"),
-        ("JOSIAS ALMEIDA FRANCISCO", "VAZAMENTO DE ÁGUA NO PASSEIO", "C", "NC"),
-        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "NC", "NC"),
-        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "SF"),
-        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "NC"),
+        ("JOSIAS ALMEIDA FRANCISCO", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "C", datetime(2026, 3, 5)),
+        ("JOSIAS ALMEIDA FRANCISCO", "VAZAMENTO DE ÁGUA NO PASSEIO", "C", "NC", datetime(2026, 3, 12)),
+        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "NC", "NC", datetime(2026, 3, 18)),
+        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "SF", datetime(2026, 3, 20)),
+        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "NC", datetime(2026, 3, 25)),
     ],
     "ESGOTO": [
-        ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C"),
-        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "VAZAMENTO DE ESGOTO", "NC", "NC"),
-        ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C"),
+        ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C", datetime(2026, 3, 8)),
+        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "VAZAMENTO DE ESGOTO", "NC", "NC", datetime(2026, 3, 15)),
+        ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C", datetime(2026, 3, 29)),
     ],
 }
 
@@ -78,12 +80,14 @@ def make_minimal_sabesp(
             ws = wb[sheet_name]
             ws["A1"] = "Unidade Executante"
             ws["C1"] = "Descrição TSS"
+            ws["L1"] = "Data Início Execução"
             ws["N1"] = "EQUIPE"
             ws["O1"] = "FACHADA"
             ws["Q1"] = "SINALIZAÇÃO"
-            for i, (team, tss, fachada, sinalizacao) in enumerate(rows, start=2):
+            for i, (team, tss, fachada, sinalizacao, start_date) in enumerate(rows, start=2):
                 ws[f"A{i}"] = "TEST"
                 ws[f"C{i}"] = tss
+                ws[f"L{i}"] = start_date
                 ws[f"N{i}"] = team
                 ws[f"O{i}"] = fachada
                 ws[f"Q{i}"] = sinalizacao

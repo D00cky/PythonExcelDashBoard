@@ -84,7 +84,9 @@ def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
 
     assert response.status_code == 200
     body = response.data.decode("utf-8")
-    assert "01/03/2026 à 31/03/2026" in body
+    # Fixture inspections span 2026-03-05..2026-03-29; that becomes the period
+    # (CAPA's stated 'à 31/03/2026' is overridden when inspection dates exist).
+    assert "05/03/2026 à 29/03/2026" in body
     assert "66.1%" in body
     assert "Polo Pimentas" in body
     # 5 top-level figures + 4 services × (team + tss) per-service charts = 13
@@ -122,7 +124,7 @@ def test_download_html_returns_self_contained_attachment(client, tmp_path):
     refs = _external_resource_attrs(body)
     assert refs == [], f"downloaded HTML must not load external resources: {refs}"
     assert body.count('class="plotly-graph-div"') == 13
-    assert "01/03/2026 à 31/03/2026" in body
+    assert "05/03/2026 à 29/03/2026" in body
 
 
 def test_download_returns_400_for_unsupported_format(client, tmp_path):

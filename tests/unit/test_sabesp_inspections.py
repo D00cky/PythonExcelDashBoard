@@ -58,3 +58,17 @@ def test_extract_inspections_counts_conforme_and_nc_per_row(tmp_path):
     fern_esg = df[(df["service"] == "ESGOTO") & (df["team"].str.startswith("FERNANDO"))]
     assert fern_esg["conforme_count"].sum() == 0
     assert fern_esg["nao_conforme_count"].sum() == 2
+
+
+def test_extract_inspections_includes_start_date_per_row(tmp_path):
+    import pandas as pd
+
+    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+
+    df = SabespPimentasTemplate().extract_inspections(path)
+
+    assert "start_date" in df.columns
+    assert pd.api.types.is_datetime64_any_dtype(df["start_date"])
+    # Earliest in fixture: 2026-03-05 (ÁGUA row 1). Latest: 2026-03-29 (ESGOTO row 3).
+    assert df["start_date"].min() == pd.Timestamp("2026-03-05")
+    assert df["start_date"].max() == pd.Timestamp("2026-03-29")

@@ -122,10 +122,12 @@ class SabespPimentasTemplate:
     def extract_inspections(self, path: Path) -> pd.DataFrame:
         """Read the four service sheets, return one row per inspection.
 
-        Columns: team, tss, service, conforme_count, nao_conforme_count.
-        Stage columns (those whose only non-null values are in {C, NC, SF, NA})
-        are auto-detected per sheet; conforme_count is the count of 'C' cells
-        across stage columns per row, nao_conforme_count the count of 'NC'.
+        Columns: team, tss, service, conforme_count, nao_conforme_count,
+        start_date. Stage columns (those whose only non-null values are in
+        {C, NC, SF, NA}) are auto-detected per sheet; conforme_count is the
+        count of 'C' cells across stage columns per row, nao_conforme_count
+        the count of 'NC'. start_date comes from 'Data Início Execução'
+        (column L in the real file) and is coerced to datetime.
         """
         parts: list[pd.DataFrame] = []
         for service in sorted(self.SERVICE_SHEETS):
@@ -149,13 +151,29 @@ class SabespPimentasTemplate:
                 df["conforme_count"] = 0
                 df["nao_conforme_count"] = 0
 
+            date_col = _ci_column(df, "Data Início Execução")
+            df["start_date"] = (
+                pd.to_datetime(df[date_col], errors="coerce")
+                if date_col is not None
+                else pd.NaT
+            )
+
             df = df.rename(columns={team_col: "team", tss_col: "tss"})
-            df = df[["team", "tss", "conforme_count", "nao_conforme_count"]].copy()
+            df = df[
+                ["team", "tss", "conforme_count", "nao_conforme_count", "start_date"]
+            ].copy()
             df["service"] = service
             parts.append(df)
         if not parts:
             return pd.DataFrame(
-                columns=["team", "tss", "service", "conforme_count", "nao_conforme_count"]
+                columns=[
+                    "team",
+                    "tss",
+                    "service",
+                    "conforme_count",
+                    "nao_conforme_count",
+                    "start_date",
+                ]
             )
         return pd.concat(parts, ignore_index=True)
 

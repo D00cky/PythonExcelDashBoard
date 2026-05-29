@@ -87,6 +87,15 @@ def _upload_path(upload_id: str) -> Path:
     return path
 
 
+def _periodo_from_inspections(df) -> str | None:
+    if df.empty or "start_date" not in df.columns:
+        return None
+    dates = df["start_date"].dropna()
+    if dates.empty:
+        return None
+    return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"
+
+
 def _build_sabesp_context(
     template: SabespPimentasTemplate,
     workbook,
@@ -95,6 +104,7 @@ def _build_sabesp_context(
 ) -> dict[str, Any]:
     iqs_rows = template.extract_iqs_by_service(workbook)
     inspections = template.extract_inspections(path)
+    periodo = _periodo_from_inspections(inspections) or template.extract_periodo(workbook)
 
     per_service_sections = []
     for idx, service in enumerate(sorted(template.SERVICE_SHEETS)):
@@ -116,7 +126,7 @@ def _build_sabesp_context(
 
     return {
         "polo_name": template.polo_name.title(),
-        "periodo": template.extract_periodo(workbook),
+        "periodo": periodo,
         "iqs_overall": template.extract_iqs_overall(workbook),
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
