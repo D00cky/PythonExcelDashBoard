@@ -1,3 +1,6 @@
+import zipfile
+
+import pytest
 from openpyxl import Workbook
 
 from app.core.ingest import read_workbook
@@ -28,3 +31,11 @@ def test_read_workbook_preserves_portuguese_diacritics(tmp_path):
     assert "ÁGUA" in result
     assert "Reposição" in result["ÁGUA"].columns
     assert result["ÁGUA"].iloc[0, 0] == "Conformidade — Não Conforme"
+
+
+def test_read_workbook_raises_on_corrupt_xlsx(tmp_path):
+    path = tmp_path / "corrupt.xlsx"
+    path.write_bytes(b"definitely not a real xlsx file")
+
+    with pytest.raises(zipfile.BadZipFile):
+        read_workbook(path)
