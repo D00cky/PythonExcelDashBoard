@@ -88,7 +88,7 @@ def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
     assert "66.1%" in body
     assert "Polo Pimentas" in body
     assert body.count('class="plotly-graph-div"') == 5
-    assert "Listas de Verificação" in body
+    assert "Listas de Verificação" not in body
     assert "Fotos Avaliadas" in body
     assert "Inspeções Avaliadas" in body
 

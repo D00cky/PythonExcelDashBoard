@@ -100,7 +100,6 @@ def _build_sabesp_context(
         "polo_name": template.polo_name.title(),
         "periodo": template.extract_periodo(workbook),
         "iqs_overall": template.extract_iqs_overall(workbook),
-        "total_lvs": sum(r.lvs for r in ic_rows),
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
         "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
