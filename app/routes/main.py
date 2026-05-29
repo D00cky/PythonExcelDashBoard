@@ -12,3 +12,6 @@ def index() -> str:
 def upload():
     if "file" not in request.files:
         abort(400)
+    file = request.files["file"]
+    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+        abort(400)
