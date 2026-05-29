@@ -252,6 +252,16 @@ class SabespPimentasTemplate:
             ),
         )
 
+    def build_team_conformity_for_service(
+        self, df: pd.DataFrame, service: str, top_n: int = 10
+    ) -> go.Figure:
+        return _conformity_chart(df, service, "team", top_n, "Equipe")
+
+    def build_tss_conformity_for_service(
+        self, df: pd.DataFrame, service: str, top_n: int = 10
+    ) -> go.Figure:
+        return _conformity_chart(df, service, "tss", top_n, "TSS")
+
     def build_team_service_stacked(self, df: pd.DataFrame, top_n: int = 15) -> go.Figure:
         if df.empty:
             return _empty_figure("Sem inspeções registradas")
@@ -331,6 +341,55 @@ def _ci_column(df: pd.DataFrame, target: str) -> str | None:
 
 
 _STAGE_CODE_VALUES = frozenset({"C", "NC", "SF", "NA"})
+
+
+def _conformity_chart(
+    df: pd.DataFrame, service: str, dim_col: str, top_n: int, dim_label: str
+) -> go.Figure:
+    sub = df[df["service"] == service] if not df.empty else df
+    if sub.empty:
+        return _empty_figure(f"Sem inspeções em {service}")
+
+    grouped = sub.groupby(dim_col).agg(
+        conforme=("conforme_count", "sum"),
+        nao_conforme=("nao_conforme_count", "sum"),
+    )
+    grouped["total"] = grouped["conforme"] + grouped["nao_conforme"]
+    grouped = grouped[grouped["total"] > 0].sort_values("total", ascending=False).head(top_n)
+    if grouped.empty:
+        return _empty_figure(f"Sem dados de conformidade em {service}")
+
+    labels = list(reversed(grouped.index))
+    conforme_vals = grouped.loc[labels, "conforme"].tolist()
+    nc_vals = grouped.loc[labels, "nao_conforme"].tolist()
+
+    return go.Figure(
+        data=[
+            go.Bar(
+                name="Conforme",
+                y=labels,
+                x=conforme_vals,
+                orientation="h",
+                marker_color="#2a9d8f",
+            ),
+            go.Bar(
+                name="Não Conforme",
+                y=labels,
+                x=nc_vals,
+                orientation="h",
+                marker_color="#e76f51",
+            ),
+        ],
+        layout=go.Layout(
+            barmode="stack",
+            title=f"{service} — Conformidade por {dim_label}",
+            xaxis={"title": "Etapas avaliadas"},
+            yaxis={"title": dim_label, "automargin": True},
+            template="plotly_white",
+            height=max(350, 30 * len(labels) + 120),
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+        ),
+    )
 
 
 def _detect_stage_columns(df: pd.DataFrame, exclude: set) -> list[str]:

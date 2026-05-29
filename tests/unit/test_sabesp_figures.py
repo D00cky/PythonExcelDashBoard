@@ -94,3 +94,43 @@ def test_build_tss_distribution_top_n_horizontal_bar():
     # Top 3 TSS by count: D (4), A (3), B (2). Reversed for y-axis display.
     assert tuple(trace.y) == ("B", "A", "D")
     assert tuple(trace.x) == (2, 3, 4)
+
+
+def _conformity_df():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {
+            "team": ["A", "A", "B", "B", "C", "D"],
+            "tss": ["x", "x", "y", "y", "z", "w"],
+            "service": ["ÁGUA"] * 5 + ["ESGOTO"],
+            "conforme_count": [2, 3, 1, 1, 3, 9],
+            "nao_conforme_count": [1, 0, 2, 3, 1, 0],
+        }
+    )
+
+
+def test_build_team_conformity_for_service_stacks_conforme_and_nc():
+    fig = SabespPimentasTemplate().build_team_conformity_for_service(
+        _conformity_df(), service="ÁGUA", top_n=3
+    )
+
+    assert fig.layout.barmode == "stack"
+    by_name = {t.name: t for t in fig.data}
+    assert set(by_name) == {"Conforme", "Não Conforme"}
+    # ÁGUA totals: A=5C/1NC=6, B=2C/5NC=7, C=3C/1NC=4
+    # Ranked desc: B(7), A(6), C(4). Reversed for plotly y: C, A, B
+    assert tuple(by_name["Conforme"].y) == ("C", "A", "B")
+    assert tuple(by_name["Conforme"].x) == (3, 5, 2)
+    assert tuple(by_name["Não Conforme"].x) == (1, 1, 5)
+
+
+def test_build_tss_conformity_for_service_stacks_by_tss():
+    fig = SabespPimentasTemplate().build_tss_conformity_for_service(
+        _conformity_df(), service="ÁGUA", top_n=3
+    )
+
+    by_name = {t.name: t for t in fig.data}
+    # ÁGUA TSS totals: x=5C/1NC=6, y=2C/5NC=7, z=3C/1NC=4. Ranked: y,x,z. Reversed: z,x,y
+    assert tuple(by_name["Conforme"].y) == ("z", "x", "y")
+    assert tuple(by_name["Conforme"].x) == (3, 5, 2)
