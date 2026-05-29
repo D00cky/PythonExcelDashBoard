@@ -2,8 +2,25 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
+_INSPECTION_ROWS = {
+    "ÁGUA": [
+        ("JOSIAS ALMEIDA FRANCISCO", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
+        ("JOSIAS ALMEIDA FRANCISCO", "VAZAMENTO DE ÁGUA NO PASSEIO"),
+        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
+        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
+        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "TROCAR RAMAL DE ÁGUA PREVENTIVA"),
+    ],
+    "ESGOTO": [
+        ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO"),
+        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "VAZAMENTO DE ESGOTO"),
+        ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO"),
+    ],
+}
 
-def make_minimal_sabesp(tmp_path: Path, *, with_periodo: bool = True) -> Path:
+
+def make_minimal_sabesp(
+    tmp_path: Path, *, with_periodo: bool = True, with_inspections: bool = False
+) -> Path:
     """Build a minimal SABESP-shape xlsx covering the cells we extract.
 
     Layout mirrors the real ``DADOS - PIMENTAS`` sheet:
@@ -54,6 +71,17 @@ def make_minimal_sabesp(tmp_path: Path, *, with_periodo: bool = True) -> Path:
 
     wb.create_sheet("ÁGUA")
     wb.create_sheet("ESGOTO")
+
+    if with_inspections:
+        for sheet_name, rows in _INSPECTION_ROWS.items():
+            ws = wb[sheet_name]
+            ws["A1"] = "Unidade Executante"
+            ws["C1"] = "Descrição TSS"
+            ws["N1"] = "EQUIPE"
+            for i, (team, tss) in enumerate(rows, start=2):
+                ws[f"A{i}"] = "TEST"
+                ws[f"C{i}"] = tss
+                ws[f"N{i}"] = team
 
     path = tmp_path / "sabesp.xlsx"
     wb.save(path)

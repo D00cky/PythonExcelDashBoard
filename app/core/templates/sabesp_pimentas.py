@@ -1,6 +1,8 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
+import pandas as pd
 import plotly.graph_objects as go
 from openpyxl.workbook import Workbook
 
@@ -117,6 +119,34 @@ class SabespPimentasTemplate:
             )
         return rows
 
+    def extract_inspections(self, path: Path) -> pd.DataFrame:
+        """Read the four service sheets, return one row per inspection.
+
+        Columns: team (col 'EQUIPE'/'Equipe'), tss (col 'Descrição TSS'), service.
+        Column header capitalisation varies between sheets (ÁGUA spells it 'EQUIPE'
+        upper-case, ESGOTO/CAVALETE/REPOSIÇÃO use 'Equipe' title-case) - case-
+        insensitive lookup handles both. Rows missing either field are dropped.
+        """
+        parts: list[pd.DataFrame] = []
+        for service in sorted(self.SERVICE_SHEETS):
+            try:
+                df = pd.read_excel(path, sheet_name=service, engine="openpyxl")
+            except (ValueError, KeyError):
+                continue
+            df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+            team_col = _ci_column(df, "EQUIPE")
+            tss_col = _ci_column(df, "Descrição TSS")
+            if team_col is None or tss_col is None:
+                continue
+            df = df.dropna(subset=[team_col, tss_col])
+            df = df.rename(columns={team_col: "team", tss_col: "tss"})
+            df = df[["team", "tss"]].copy()
+            df["service"] = service
+            parts.append(df)
+        if not parts:
+            return pd.DataFrame(columns=["team", "tss", "service"])
+        return pd.concat(parts, ignore_index=True)
+
     def build_service_iqs_bar(self, rows: list[ServiceIQS]) -> go.Figure:
         return go.Figure(
             data=[
@@ -180,3 +210,11 @@ class SabespPimentasTemplate:
                 template="plotly_white",
             ),
         )
+
+
+def _ci_column(df: pd.DataFrame, target: str) -> str | None:
+    target_lower = target.casefold()
+    for col in df.columns:
+        if isinstance(col, str) and col.casefold() == target_lower:
+            return col
+    return None
