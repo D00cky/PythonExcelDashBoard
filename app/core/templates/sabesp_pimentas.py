@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+import plotly.graph_objects as go
 from openpyxl.workbook import Workbook
 
 DATA_SHEET = "DADOS - PIMENTAS"
@@ -72,3 +73,22 @@ class SabespPimentasTemplate:
             return None
         value = workbook[DATA_SHEET][IQS_OVERALL_CELL].value
         return value if isinstance(value, int | float) else None
+
+    def build_service_iqs_bar(self, rows: list[ServiceIQS]) -> go.Figure:
+        return go.Figure(
+            data=[
+                go.Bar(
+                    x=[r.name for r in rows],
+                    y=[r.conforme_pct for r in rows],
+                    marker_color="#2a9d8f",
+                    text=[f"{r.conforme_pct:.1%}" for r in rows],
+                    textposition="outside",
+                )
+            ],
+            layout=go.Layout(
+                title="Índice de Qualidade SABESP por Serviço",
+                yaxis={"title": "Conforme (%)", "tickformat": ".0%", "range": [0, 1]},
+                xaxis={"title": "Serviço"},
+                template="plotly_white",
+            ),
+        )
