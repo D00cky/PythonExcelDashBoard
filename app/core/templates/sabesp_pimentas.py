@@ -4,7 +4,8 @@ from dataclasses import dataclass
 import plotly.graph_objects as go
 from openpyxl.workbook import Workbook
 
-DATA_SHEET = "DADOS - PIMENTAS"
+DATA_SHEET_PREFIX = "DADOS - "
+COVER_SHEET = "CAPA"
 PERIODO_CELL = "B4"
 PERIODO_PREFIX = "Período: "
 
@@ -42,29 +43,41 @@ class ServiceIQS:
 
 
 class SabespPimentasTemplate:
-    REQUIRED_SHEETS = frozenset({"CAPA", DATA_SHEET})
     SERVICE_SHEETS = frozenset({"ÁGUA", "ESGOTO", "CAVALETE", "REPOSIÇÃO"})
     MIN_SERVICES = 2
 
+    def __init__(self, data_sheet_name: str = "DADOS - PIMENTAS"):
+        self.data_sheet_name = data_sheet_name
+        self.polo_name = data_sheet_name.removeprefix(DATA_SHEET_PREFIX).strip()
+
+    @classmethod
+    def detect(cls, sheet_names: Iterable[str]) -> "SabespPimentasTemplate | None":
+        names = {name.strip() for name in sheet_names}
+        if COVER_SHEET not in names:
+            return None
+        data_sheet = next((n for n in names if n.startswith(DATA_SHEET_PREFIX)), None)
+        if data_sheet is None:
+            return None
+        if len(cls.SERVICE_SHEETS & names) < cls.MIN_SERVICES:
+            return None
+        return cls(data_sheet_name=data_sheet)
+
     @classmethod
     def matches(cls, sheet_names: Iterable[str]) -> bool:
-        names = {name.strip() for name in sheet_names}
-        if not cls.REQUIRED_SHEETS.issubset(names):
-            return False
-        return len(cls.SERVICE_SHEETS & names) >= cls.MIN_SERVICES
+        return cls.detect(sheet_names) is not None
 
     def extract_periodo(self, workbook: Workbook) -> str | None:
-        if DATA_SHEET not in workbook.sheetnames:
+        if self.data_sheet_name not in workbook.sheetnames:
             return None
-        value = workbook[DATA_SHEET][PERIODO_CELL].value
+        value = workbook[self.data_sheet_name][PERIODO_CELL].value
         if not isinstance(value, str):
             return None
         return value.removeprefix(PERIODO_PREFIX).strip() or None
 
     def extract_iqs_by_service(self, workbook: Workbook) -> list[ServiceIQS]:
-        if DATA_SHEET not in workbook.sheetnames:
+        if self.data_sheet_name not in workbook.sheetnames:
             return []
-        ws = workbook[DATA_SHEET]
+        ws = workbook[self.data_sheet_name]
         rows: list[ServiceIQS] = []
         for name, row in IQS_SERVICE_ROWS.items():
             if ws[f"B{row}"].value != name:
@@ -82,15 +95,15 @@ class SabespPimentasTemplate:
         return rows
 
     def extract_iqs_overall(self, workbook: Workbook) -> float | None:
-        if DATA_SHEET not in workbook.sheetnames:
+        if self.data_sheet_name not in workbook.sheetnames:
             return None
-        value = workbook[DATA_SHEET][IQS_OVERALL_CELL].value
+        value = workbook[self.data_sheet_name][IQS_OVERALL_CELL].value
         return value if isinstance(value, int | float) else None
 
     def extract_ic_by_service(self, workbook: Workbook) -> list[ServiceIC]:
-        if DATA_SHEET not in workbook.sheetnames:
+        if self.data_sheet_name not in workbook.sheetnames:
             return []
-        ws = workbook[DATA_SHEET]
+        ws = workbook[self.data_sheet_name]
         rows: list[ServiceIC] = []
         for name, row in IC_SERVICE_ROWS.items():
             if ws[f"B{row}"].value != name:

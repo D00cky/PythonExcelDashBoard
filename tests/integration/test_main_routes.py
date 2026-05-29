@@ -86,6 +86,7 @@ def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
     body = response.data.decode("utf-8")
     assert "01/03/2026 à 31/03/2026" in body
     assert "66.1%" in body
+    assert "Polo Pimentas" in body
     assert body.count('class="plotly-graph-div"') == 3
     assert "Listas de Verificação" in body
     assert "Fotos Avaliadas" in body

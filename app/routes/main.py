@@ -95,6 +95,7 @@ def _build_sabesp_context(
     ic_rows = template.extract_ic_by_service(workbook)
     iqs_rows = template.extract_iqs_by_service(workbook)
     return {
+        "polo_name": template.polo_name.title(),
         "periodo": template.extract_periodo(workbook),
         "iqs_overall": template.extract_iqs_overall(workbook),
         "total_lvs": sum(r.lvs for r in ic_rows),

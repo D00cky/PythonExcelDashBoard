@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Dashboard SABESP — Polo Pimentas</title>
+    <title>Dashboard SABESP — Polo {{ polo_name }}</title>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem; color: #1a1a1a; }
         header { border-bottom: 1px solid #ddd; padding-bottom: 1rem; margin-bottom: 1.5rem; }
@@ -23,7 +23,7 @@
 </head>
 <body>
     <header>
-        <h1>Dashboard SABESP — Polo Pimentas</h1>
+        <h1>Dashboard SABESP — Polo {{ polo_name }}</h1>
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong></div>{% endif %}
     </header>
 
@@ -62,6 +62,6 @@
     <div class="chart">{{ fig_iqs_bar | safe }}</div>
     <div class="chart">{{ fig_photos | safe }}</div>
 
-    <footer>Gerado a partir de Relatório Semanal — Polo Pimentas</footer>
+    <footer>Gerado a partir de Relatório Semanal — Polo {{ polo_name }}</footer>
 </body>
 </html>

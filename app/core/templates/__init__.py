@@ -4,6 +4,4 @@ from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
 
 
 def recognize(sheet_names: Iterable[str]) -> SabespPimentasTemplate | None:
-    if SabespPimentasTemplate.matches(sheet_names):
-        return SabespPimentasTemplate()
-    return None
+    return SabespPimentasTemplate.detect(sheet_names)
