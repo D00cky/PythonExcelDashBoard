@@ -75,9 +75,7 @@ def download(upload_id: str) -> Response:
 
     body, mimetype = render_export(fmt, template, workbook, path)
     response = Response(body, mimetype=mimetype)
-    response.headers["Content-Disposition"] = (
-        f'attachment; filename="dashboard-{upload_id}.{fmt}"'
-    )
+    response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
     return response
 
 
@@ -114,14 +112,10 @@ def _build_sabesp_context(
                 "service": service,
                 "team_chart": template.build_team_conformity_for_service(
                     inspections, service
-                ).to_html(
-                    include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"
-                ),
+                ).to_html(include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"),
                 "tss_chart": template.build_tss_conformity_for_service(
                     inspections, service
-                ).to_html(
-                    include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"
-                ),
+                ).to_html(include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"),
             }
         )
 

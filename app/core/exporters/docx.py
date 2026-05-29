@@ -69,7 +69,10 @@ def render_docx(template: SabespPimentasTemplate, workbook: Workbook, path: Path
             _table(
                 doc,
                 ["Equipe", "Conforme", "Não Conforme"],
-                [[team, str(int(r["conforme"])), str(int(r["nao_conforme"]))] for team, r in top.iterrows()],
+                [
+                    [team, str(int(r["conforme"])), str(int(r["nao_conforme"]))]
+                    for team, r in top.iterrows()
+                ],
             )
 
     buf = BytesIO()

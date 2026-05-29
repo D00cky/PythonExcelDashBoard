@@ -37,7 +37,12 @@ def render_xlsx(template: SabespPimentasTemplate, workbook: Workbook, path: Path
     _write_table(
         wb.create_sheet("IQS por Serviço"),
         headers=[
-            "Serviço", "Fotos Avaliadas", "NC", "Conforme", "NC (%)", "Conforme (%)",
+            "Serviço",
+            "Fotos Avaliadas",
+            "NC",
+            "Conforme",
+            "NC (%)",
+            "Conforme (%)",
         ],
         rows=[
             [r.name, r.fotos_avaliadas, r.fotos_nc, r.fotos_conforme, r.nc_pct, r.conforme_pct]
@@ -102,9 +107,7 @@ def _write_table(ws, *, headers, rows, pct_cols: set[int] | None = None):
                 cell.number_format = "0.0%"
     for c in range(1, len(headers) + 1):
         col_letter = ws.cell(row=1, column=c).column_letter
-        ws.column_dimensions[col_letter].width = max(
-            18, len(str(headers[c - 1])) + 4
-        )
+        ws.column_dimensions[col_letter].width = max(18, len(str(headers[c - 1])) + 4)
 
 
 def _periodo(df) -> str | None:

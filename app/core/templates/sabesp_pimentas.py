@@ -153,15 +153,11 @@ class SabespPimentasTemplate:
 
             date_col = _ci_column(df, "Data Início Execução")
             df["start_date"] = (
-                pd.to_datetime(df[date_col], errors="coerce")
-                if date_col is not None
-                else pd.NaT
+                pd.to_datetime(df[date_col], errors="coerce") if date_col is not None else pd.NaT
             )
 
             df = df.rename(columns={team_col: "team", tss_col: "tss"})
-            df = df[
-                ["team", "tss", "conforme_count", "nao_conforme_count", "start_date"]
-            ].copy()
+            df = df[["team", "tss", "conforme_count", "nao_conforme_count", "start_date"]].copy()
             df["service"] = service
             parts.append(df)
         if not parts:

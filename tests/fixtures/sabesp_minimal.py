@@ -7,15 +7,39 @@ from openpyxl import Workbook
 # Stage values are 'C', 'NC' or 'SF'. Dates span 2026-03-05 to 2026-03-29.
 _INSPECTION_ROWS = {
     "ÁGUA": [
-        ("JOSIAS ALMEIDA FRANCISCO", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "C", datetime(2026, 3, 5)),
-        ("JOSIAS ALMEIDA FRANCISCO", "VAZAMENTO DE ÁGUA NO PASSEIO", "C", "NC", datetime(2026, 3, 12)),
+        (
+            "JOSIAS ALMEIDA FRANCISCO",
+            "TROCAR RAMAL DE ÁGUA PREVENTIVA",
+            "C",
+            "C",
+            datetime(2026, 3, 5),
+        ),
+        (
+            "JOSIAS ALMEIDA FRANCISCO",
+            "VAZAMENTO DE ÁGUA NO PASSEIO",
+            "C",
+            "NC",
+            datetime(2026, 3, 12),
+        ),
         ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "NC", "NC", datetime(2026, 3, 18)),
         ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "SF", datetime(2026, 3, 20)),
-        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "NC", datetime(2026, 3, 25)),
+        (
+            "FERNANDO PEREIRA ASSIS DE LIMA MARTINS",
+            "TROCAR RAMAL DE ÁGUA PREVENTIVA",
+            "C",
+            "NC",
+            datetime(2026, 3, 25),
+        ),
     ],
     "ESGOTO": [
         ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C", datetime(2026, 3, 8)),
-        ("FERNANDO PEREIRA ASSIS DE LIMA MARTINS", "VAZAMENTO DE ESGOTO", "NC", "NC", datetime(2026, 3, 15)),
+        (
+            "FERNANDO PEREIRA ASSIS DE LIMA MARTINS",
+            "VAZAMENTO DE ESGOTO",
+            "NC",
+            "NC",
+            datetime(2026, 3, 15),
+        ),
         ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C", datetime(2026, 3, 29)),
     ],
 }
