@@ -104,7 +104,7 @@ def test_dashboard_returns_404_for_unknown_id(client):
     assert response.status_code == 404
 
 
-def test_download_html_returns_self_contained_attachment(client, tmp_path):
+def _upload_minimal(client, tmp_path) -> str:
     from tests.fixtures.sabesp_minimal import make_minimal_sabesp
 
     payload = make_minimal_sabesp(tmp_path, with_inspections=True).read_bytes()
@@ -113,31 +113,56 @@ def test_download_html_returns_self_contained_attachment(client, tmp_path):
         data={"file": (io.BytesIO(payload), "report.xlsx")},
         content_type="multipart/form-data",
     )
-    upload_id = upload.location.removeprefix("/dashboard/")
+    return upload.location.removeprefix("/dashboard/")
 
-    response = client.get(f"/download/{upload_id}?fmt=html")
+
+def test_download_md_returns_markdown_summary(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/download/{upload_id}?fmt=md")
 
     assert response.status_code == 200
-    assert "attachment" in response.headers["Content-Disposition"]
-    assert f"dashboard-{upload_id}.html" in response.headers["Content-Disposition"]
+    assert response.mimetype == "text/markdown"
+    assert f"dashboard-{upload_id}.md" in response.headers["Content-Disposition"]
     body = response.data.decode("utf-8")
-    refs = _external_resource_attrs(body)
-    assert refs == [], f"downloaded HTML must not load external resources: {refs}"
-    assert body.count('class="plotly-graph-div"') == 13
+    assert body.startswith("# Dashboard SABESP")
+    assert "Polo Pimentas" in body
     assert "05/03/2026 à 29/03/2026" in body
 
 
-def test_download_returns_400_for_unsupported_format(client, tmp_path):
-    from tests.fixtures.sabesp_minimal import make_minimal_sabesp
+def test_download_xlsx_returns_openxml_workbook(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
 
-    payload = make_minimal_sabesp(tmp_path).read_bytes()
-    upload = client.post(
-        "/upload",
-        data={"file": (io.BytesIO(payload), "report.xlsx")},
-        content_type="multipart/form-data",
-    )
-    upload_id = upload.location.removeprefix("/dashboard/")
+    response = client.get(f"/download/{upload_id}?fmt=xlsx")
+
+    assert response.status_code == 200
+    assert "spreadsheetml.sheet" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+
+
+def test_download_pdf_returns_pdf_bytes(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
 
     response = client.get(f"/download/{upload_id}?fmt=pdf")
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data[:4] == b"%PDF"
+
+
+def test_download_docx_returns_office_document(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/download/{upload_id}?fmt=docx")
+
+    assert response.status_code == 200
+    assert "wordprocessingml.document" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+
+
+def test_download_returns_400_for_unsupported_format(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/download/{upload_id}?fmt=txt")
 
     assert response.status_code == 400

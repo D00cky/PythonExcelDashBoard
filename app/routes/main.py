@@ -51,15 +51,18 @@ def dashboard(upload_id: str) -> str:
 
     return render_template(
         "dashboard.html",
-        download_url=url_for("main.download", upload_id=upload_id, fmt="html"),
+        download_action=url_for("main.download", upload_id=upload_id),
         **_build_sabesp_context(template, workbook, path, plotly_mode="cdn"),
     )
 
 
+_SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx"}
+
+
 @bp.get("/download/<upload_id>")
 def download(upload_id: str) -> Response:
-    fmt = request.args.get("fmt", "html").lower()
-    if fmt != "html":
+    fmt = request.args.get("fmt", "md").lower()
+    if fmt not in _SUPPORTED_FORMATS:
         abort(400)
 
     path = _upload_path(upload_id)
@@ -68,14 +71,12 @@ def download(upload_id: str) -> Response:
     if not isinstance(template, SabespPimentasTemplate):
         abort(404)
 
-    html = render_template(
-        "dashboard.html",
-        download_url=None,
-        **_build_sabesp_context(template, workbook, path, plotly_mode="inline"),
-    )
-    response = Response(html, mimetype="text/html")
+    from app.core.exporters import render_export
+
+    body, mimetype = render_export(fmt, template, workbook, path)
+    response = Response(body, mimetype=mimetype)
     response.headers["Content-Disposition"] = (
-        f'attachment; filename="dashboard-{upload_id}.html"'
+        f'attachment; filename="dashboard-{upload_id}.{fmt}"'
     )
     return response
 

@@ -16,9 +16,10 @@
         .kpi-label { color: #555; margin-top: 0.5rem; font-size: 0.9rem; }
         .chart { margin: 2rem 0; }
         footer { color: #888; font-size: 0.85rem; margin-top: 2rem; text-align: center; }
-        .download { margin: 1.5rem 0; }
-        .download a { display: inline-block; padding: 0.6rem 1.25rem; background: #264653; color: white; border-radius: 6px; text-decoration: none; font-size: 0.95rem; }
-        .download a:hover { background: #1c343f; }
+        .download { margin: 1.5rem 0; display: flex; gap: 0.75rem; align-items: center; }
+        .download select { padding: 0.5rem; font-size: 0.95rem; border-radius: 6px; border: 1px solid #ccc; }
+        .download button { padding: 0.6rem 1.25rem; background: #264653; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; }
+        .download button:hover { background: #1c343f; }
         .service-section { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid #e0e6e4; }
         .service-section h2 { margin: 0 0 1rem; color: #264653; font-size: 1.4rem; }
         .chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
@@ -56,10 +57,17 @@
         {% endif %}
     </div>
 
-    {% if download_url %}
-    <div class="download">
-        <a href="{{ download_url }}" download>⬇ Baixar dashboard (HTML offline)</a>
-    </div>
+    {% if download_action %}
+    <form class="download" action="{{ download_action }}" method="get">
+        <label for="fmt">Baixar como:</label>
+        <select id="fmt" name="fmt">
+            <option value="md">.md (Markdown)</option>
+            <option value="xlsx">.xlsx (Excel)</option>
+            <option value="pdf">.pdf (PDF)</option>
+            <option value="docx">.docx (Word)</option>
+        </select>
+        <button type="submit">⬇ Baixar</button>
+    </form>
     {% endif %}
 
     <div class="chart">{{ fig_ic_bar | safe }}</div>
