@@ -8,7 +8,7 @@ class SabespPimentasTemplate:
 
     @classmethod
     def matches(cls, sheet_names: Iterable[str]) -> bool:
-        names = set(sheet_names)
+        names = {name.strip() for name in sheet_names}
         if not cls.REQUIRED_SHEETS.issubset(names):
             return False
         return len(cls.SERVICE_SHEETS & names) >= cls.MIN_SERVICES
