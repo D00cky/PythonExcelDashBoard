@@ -24,8 +24,8 @@
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong></div>{% endif %}
     </header>
 
-    {% if iqs_overall is not none %}
     <div class="kpi-row">
+        {% if iqs_overall is not none %}
         <div class="kpi-card">
             {% set pct = iqs_overall * 100 %}
             {% if pct >= 80 %}{% set cls = "" %}
@@ -34,9 +34,22 @@
             <div class="kpi-value {{ cls }}">{{ "%.1f"|format(pct) }}%</div>
             <div class="kpi-label">IQS — Índice de Qualidade SABESP</div>
         </div>
+        {% endif %}
+        {% if total_fotos %}
+        <div class="kpi-card">
+            <div class="kpi-value">{{ total_fotos }}</div>
+            <div class="kpi-label">Fotos Avaliadas</div>
+        </div>
+        {% endif %}
+        {% if total_lvs %}
+        <div class="kpi-card">
+            <div class="kpi-value">{{ total_lvs }}</div>
+            <div class="kpi-label">Listas de Verificação (LVs)</div>
+        </div>
+        {% endif %}
     </div>
-    {% endif %}
 
+    <div class="chart">{{ fig_ic_bar | safe }}</div>
     <div class="chart">{{ fig_iqs_bar | safe }}</div>
     <div class="chart">{{ fig_photos | safe }}</div>
 

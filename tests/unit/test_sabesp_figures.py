@@ -1,6 +1,10 @@
 import plotly.graph_objects as go
 
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate, ServiceIQS
+from app.core.templates.sabesp_pimentas import (
+    SabespPimentasTemplate,
+    ServiceIC,
+    ServiceIQS,
+)
 
 _ROWS = [
     ServiceIQS("Água", 182, 91, 91, 0.5, 0.5),
@@ -29,3 +33,18 @@ def test_build_photo_conformity_stacked_has_nc_and_conforme_traces():
     assert tuple(by_name["Não Conforme"].y) == (91, 16, 13, 6)
     assert tuple(by_name["Conforme"].y) == (91, 17, 60, 25)
     assert tuple(by_name["Conforme"].x) == ("Água", "Esgoto", "Cavalete", "Reposição")
+
+
+def test_build_ic_bar_has_one_bar_per_service():
+    rows = [
+        ServiceIC("Água", 1.0, 100),
+        ServiceIC("Esgoto", 0.5, 50),
+        ServiceIC("Reposição", 0.1, 1),
+    ]
+
+    fig = SabespPimentasTemplate().build_ic_bar(rows)
+
+    assert isinstance(fig, go.Figure)
+    assert len(fig.data) == 1
+    assert tuple(fig.data[0].x) == ("Água", "Esgoto", "Reposição")
+    assert tuple(fig.data[0].y) == (1.0, 0.5, 0.1)

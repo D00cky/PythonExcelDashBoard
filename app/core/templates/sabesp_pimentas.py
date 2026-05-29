@@ -8,6 +8,12 @@ DATA_SHEET = "DADOS - PIMENTAS"
 PERIODO_CELL = "B4"
 PERIODO_PREFIX = "Período: "
 
+IC_SERVICE_ROWS = {
+    "Água": 11,
+    "Esgoto": 12,
+    "Reposição": 13,
+}
+
 IQS_SERVICE_ROWS = {
     "Água": 26,
     "Esgoto": 27,
@@ -16,6 +22,13 @@ IQS_SERVICE_ROWS = {
 }
 IQS_TOTAL_ROW = 30
 IQS_OVERALL_CELL = f"G{IQS_TOTAL_ROW}"
+
+
+@dataclass(frozen=True)
+class ServiceIC:
+    name: str
+    ic_pct: float
+    lvs: int
 
 
 @dataclass(frozen=True)
@@ -74,6 +87,23 @@ class SabespPimentasTemplate:
         value = workbook[DATA_SHEET][IQS_OVERALL_CELL].value
         return value if isinstance(value, int | float) else None
 
+    def extract_ic_by_service(self, workbook: Workbook) -> list[ServiceIC]:
+        if DATA_SHEET not in workbook.sheetnames:
+            return []
+        ws = workbook[DATA_SHEET]
+        rows: list[ServiceIC] = []
+        for name, row in IC_SERVICE_ROWS.items():
+            if ws[f"B{row}"].value != name:
+                continue
+            rows.append(
+                ServiceIC(
+                    name=name,
+                    ic_pct=ws[f"C{row}"].value or 0.0,
+                    lvs=ws[f"E{row}"].value or 0,
+                )
+            )
+        return rows
+
     def build_service_iqs_bar(self, rows: list[ServiceIQS]) -> go.Figure:
         return go.Figure(
             data=[
@@ -88,6 +118,25 @@ class SabespPimentasTemplate:
             layout=go.Layout(
                 title="Índice de Qualidade SABESP por Serviço",
                 yaxis={"title": "Conforme (%)", "tickformat": ".0%", "range": [0, 1]},
+                xaxis={"title": "Serviço"},
+                template="plotly_white",
+            ),
+        )
+
+    def build_ic_bar(self, rows: list[ServiceIC]) -> go.Figure:
+        return go.Figure(
+            data=[
+                go.Bar(
+                    x=[r.name for r in rows],
+                    y=[r.ic_pct for r in rows],
+                    marker_color="#264653",
+                    text=[f"{r.ic_pct:.0%}" for r in rows],
+                    textposition="outside",
+                )
+            ],
+            layout=go.Layout(
+                title="Índice de Conformidade (IC) por Serviço",
+                yaxis={"title": "IC (%)", "tickformat": ".0%", "range": [0, 1.1]},
                 xaxis={"title": "Serviço"},
                 template="plotly_white",
             ),

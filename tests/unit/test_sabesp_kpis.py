@@ -37,3 +37,16 @@ def test_extract_iqs_overall_returns_total_row_conforme_pct(tmp_path):
     wb = load_workbook(make_minimal_sabesp(tmp_path))
 
     assert SabespPimentasTemplate().extract_iqs_overall(wb) == 0.660880
+
+
+def test_extract_ic_by_service_returns_three_services(tmp_path):
+    wb = load_workbook(make_minimal_sabesp(tmp_path))
+
+    rows = SabespPimentasTemplate().extract_ic_by_service(wb)
+
+    by_name = {r.name: r for r in rows}
+    assert set(by_name) == {"Água", "Esgoto", "Reposição"}
+    assert by_name["Água"].ic_pct == 1.0
+    assert by_name["Água"].lvs == 100
+    assert by_name["Esgoto"].ic_pct == 0.5
+    assert by_name["Reposição"].lvs == 1

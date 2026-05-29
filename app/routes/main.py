@@ -42,7 +42,9 @@ def dashboard(upload_id: str) -> str:
     if not isinstance(template, SabespPimentasTemplate):
         return render_template("dashboard_unknown.html", sheet_names=workbook.sheetnames)
 
+    ic_rows = template.extract_ic_by_service(workbook)
     iqs_rows = template.extract_iqs_by_service(workbook)
+    ic_bar = template.build_ic_bar(ic_rows)
     iqs_bar = template.build_service_iqs_bar(iqs_rows)
     photos = template.build_photo_conformity_stacked(iqs_rows)
 
@@ -50,6 +52,9 @@ def dashboard(upload_id: str) -> str:
         "dashboard.html",
         periodo=template.extract_periodo(workbook),
         iqs_overall=template.extract_iqs_overall(workbook),
-        fig_iqs_bar=iqs_bar.to_html(include_plotlyjs="cdn", full_html=False, div_id="iqs-bar"),
+        total_lvs=sum(r.lvs for r in ic_rows),
+        total_fotos=sum(r.fotos_avaliadas for r in iqs_rows),
+        fig_ic_bar=ic_bar.to_html(include_plotlyjs="cdn", full_html=False, div_id="ic-bar"),
+        fig_iqs_bar=iqs_bar.to_html(include_plotlyjs=False, full_html=False, div_id="iqs-bar"),
         fig_photos=photos.to_html(include_plotlyjs=False, full_html=False, div_id="photos"),
     )

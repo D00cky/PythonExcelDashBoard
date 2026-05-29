@@ -21,6 +21,19 @@ def make_minimal_sabesp(tmp_path: Path, *, with_periodo: bool = True) -> Path:
     if with_periodo:
         dados["B4"] = "Período: 01/03/2026 à 31/03/2026"
 
+    dados["B10"] = "Tipo de Serviço"
+    dados["C10"] = "IC (%)"
+    dados["E10"] = "Quantidade de LVs"
+    dados["B11"] = "Água"
+    dados["C11"] = 1.0
+    dados["E11"] = 100
+    dados["B12"] = "Esgoto"
+    dados["C12"] = 0.5
+    dados["E12"] = 50
+    dados["B13"] = "Reposição"
+    dados["C13"] = 0.1
+    dados["E13"] = 1
+
     dados["B25"] = "Tipo de Serviço"
     dados["C25"] = "Fotos Avaliadas"
     dados["D25"] = "Fotos NC"
