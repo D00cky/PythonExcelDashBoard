@@ -93,16 +93,34 @@ def _build_sabesp_context(
     path: Path,
     plotly_mode: Literal["cdn", "inline"],
 ) -> dict[str, Any]:
-    ic_rows = template.extract_ic_by_service(workbook)
     iqs_rows = template.extract_iqs_by_service(workbook)
     inspections = template.extract_inspections(path)
+
+    per_service_sections = []
+    for idx, service in enumerate(sorted(template.SERVICE_SHEETS)):
+        per_service_sections.append(
+            {
+                "service": service,
+                "team_chart": template.build_team_conformity_for_service(
+                    inspections, service
+                ).to_html(
+                    include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"
+                ),
+                "tss_chart": template.build_tss_conformity_for_service(
+                    inspections, service
+                ).to_html(
+                    include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"
+                ),
+            }
+        )
+
     return {
         "polo_name": template.polo_name.title(),
         "periodo": template.extract_periodo(workbook),
         "iqs_overall": template.extract_iqs_overall(workbook),
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
-        "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
+        "fig_ic_bar": template.build_ic_bar(template.extract_ic_by_service(workbook)).to_html(
             include_plotlyjs=plotly_mode, full_html=False, div_id="ic-bar"
         ),
         "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
@@ -117,4 +135,5 @@ def _build_sabesp_context(
         "fig_tss": template.build_tss_distribution(inspections).to_html(
             include_plotlyjs=False, full_html=False, div_id="tss-distribution"
         ),
+        "per_service_sections": per_service_sections,
     }

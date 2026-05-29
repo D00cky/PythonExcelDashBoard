@@ -87,10 +87,13 @@ def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
     assert "01/03/2026 à 31/03/2026" in body
     assert "66.1%" in body
     assert "Polo Pimentas" in body
-    assert body.count('class="plotly-graph-div"') == 5
+    # 5 top-level figures + 4 services × (team + tss) per-service charts = 13
+    assert body.count('class="plotly-graph-div"') == 13
     assert "Listas de Verificação" not in body
     assert "Fotos Avaliadas" in body
     assert "Inspeções Avaliadas" in body
+    assert "Conformidade por Equipe" in body
+    assert "Conformidade por TSS" in body
 
 
 def test_dashboard_returns_404_for_unknown_id(client):
@@ -118,7 +121,7 @@ def test_download_html_returns_self_contained_attachment(client, tmp_path):
     body = response.data.decode("utf-8")
     refs = _external_resource_attrs(body)
     assert refs == [], f"downloaded HTML must not load external resources: {refs}"
-    assert body.count('class="plotly-graph-div"') == 5
+    assert body.count('class="plotly-graph-div"') == 13
     assert "01/03/2026 à 31/03/2026" in body
 
 

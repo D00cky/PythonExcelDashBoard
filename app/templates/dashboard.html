@@ -19,6 +19,10 @@
         .download { margin: 1.5rem 0; }
         .download a { display: inline-block; padding: 0.6rem 1.25rem; background: #264653; color: white; border-radius: 6px; text-decoration: none; font-size: 0.95rem; }
         .download a:hover { background: #1c343f; }
+        .service-section { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid #e0e6e4; }
+        .service-section h2 { margin: 0 0 1rem; color: #264653; font-size: 1.4rem; }
+        .chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+        @media (min-width: 1000px) { .chart-grid { grid-template-columns: 1fr 1fr; } }
     </style>
 </head>
 <body>
@@ -63,6 +67,16 @@
     <div class="chart">{{ fig_photos | safe }}</div>
     <div class="chart">{{ fig_team_service | safe }}</div>
     <div class="chart">{{ fig_tss | safe }}</div>
+
+    {% for section in per_service_sections %}
+    <section class="service-section">
+        <h2>{{ section.service }}</h2>
+        <div class="chart-grid">
+            <div class="chart">{{ section.team_chart | safe }}</div>
+            <div class="chart">{{ section.tss_chart | safe }}</div>
+        </div>
+    </section>
+    {% endfor %}
 
     <footer>Gerado a partir de Relatório Semanal — Polo {{ polo_name }}</footer>
 </body>
