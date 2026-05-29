@@ -50,6 +50,12 @@
             <div class="kpi-label">Listas de Verificação (LVs)</div>
         </div>
         {% endif %}
+        {% if total_inspections %}
+        <div class="kpi-card">
+            <div class="kpi-value">{{ total_inspections }}</div>
+            <div class="kpi-label">Inspeções Avaliadas</div>
+        </div>
+        {% endif %}
     </div>
 
     {% if download_url %}
@@ -61,6 +67,8 @@
     <div class="chart">{{ fig_ic_bar | safe }}</div>
     <div class="chart">{{ fig_iqs_bar | safe }}</div>
     <div class="chart">{{ fig_photos | safe }}</div>
+    <div class="chart">{{ fig_team_service | safe }}</div>
+    <div class="chart">{{ fig_tss | safe }}</div>
 
     <footer>Gerado a partir de Relatório Semanal — Polo {{ polo_name }}</footer>
 </body>

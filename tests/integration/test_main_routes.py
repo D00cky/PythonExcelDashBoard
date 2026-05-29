@@ -73,7 +73,7 @@ def test_upload_persists_file_and_303_redirects_to_dashboard(client, app):
 def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
     from tests.fixtures.sabesp_minimal import make_minimal_sabesp
 
-    payload = make_minimal_sabesp(tmp_path).read_bytes()
+    payload = make_minimal_sabesp(tmp_path, with_inspections=True).read_bytes()
     upload_response = client.post(
         "/upload",
         data={"file": (io.BytesIO(payload), "report.xlsx")},
@@ -87,9 +87,10 @@ def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
     assert "01/03/2026 à 31/03/2026" in body
     assert "66.1%" in body
     assert "Polo Pimentas" in body
-    assert body.count('class="plotly-graph-div"') == 3
+    assert body.count('class="plotly-graph-div"') == 5
     assert "Listas de Verificação" in body
     assert "Fotos Avaliadas" in body
+    assert "Inspeções Avaliadas" in body
 
 
 def test_dashboard_returns_404_for_unknown_id(client):
@@ -101,7 +102,7 @@ def test_dashboard_returns_404_for_unknown_id(client):
 def test_download_html_returns_self_contained_attachment(client, tmp_path):
     from tests.fixtures.sabesp_minimal import make_minimal_sabesp
 
-    payload = make_minimal_sabesp(tmp_path).read_bytes()
+    payload = make_minimal_sabesp(tmp_path, with_inspections=True).read_bytes()
     upload = client.post(
         "/upload",
         data={"file": (io.BytesIO(payload), "report.xlsx")},
@@ -117,7 +118,7 @@ def test_download_html_returns_self_contained_attachment(client, tmp_path):
     body = response.data.decode("utf-8")
     refs = _external_resource_attrs(body)
     assert refs == [], f"downloaded HTML must not load external resources: {refs}"
-    assert body.count('class="plotly-graph-div"') == 3
+    assert body.count('class="plotly-graph-div"') == 5
     assert "01/03/2026 à 31/03/2026" in body
 
 
