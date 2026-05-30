@@ -18,9 +18,16 @@
         .count-card { padding: 0.9rem 1rem; border-radius: 8px; text-align: center; }
         .count-card.conforme { background: #e0f3ef; color: #1d6c5e; }
         .count-card.nao-conforme { background: #fce4dc; color: #b14732; }
-        .count-card.sem-foto { background: #fff3d6; color: #8a6900; }
-        .count-card.nao-avaliado { background: #ebeef0; color: #555; }
         .count-card.inspecoes { background: #2a9d8f; color: white; }
+        .breakdown { font-size: 0.88rem; color: #666; margin: -0.4rem 0 1.1rem; padding: 0 0.2rem; }
+        .breakdown strong { color: #b14732; }
+        .failing-list { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #e2e8e6; }
+        .failing-list h3 { font-size: 0.95rem; color: #b14732; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.04em; }
+        .failing-row { padding: 0.65rem 0.8rem; border-radius: 6px; background: #fdf3ef; margin-bottom: 0.5rem; font-size: 0.9rem; }
+        .failing-row .tss { font-weight: 600; color: #264653; margin-bottom: 0.25rem; }
+        .failing-row .stage { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; background: #e76f51; color: white; font-size: 0.78rem; font-weight: 600; margin-right: 0.4rem; }
+        .failing-row .stage.sf { background: #e9c46a; color: #6c4f00; }
+        .failing-row .obs { color: #555; font-style: italic; margin-top: 0.2rem; display: block; }
         .count-value { font-size: 1.75rem; font-weight: 700; line-height: 1; }
         .count-label { font-size: 0.78rem; margin-top: 0.25rem; letter-spacing: 0.02em; text-transform: uppercase; }
         .reasons { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
@@ -65,15 +72,13 @@
                     <div class="count-value">{{ info.nao_conforme }}</div>
                     <div class="count-label">Não Conforme</div>
                 </div>
-                <div class="count-card sem-foto">
-                    <div class="count-value">{{ info.sem_foto }}</div>
-                    <div class="count-label">Sem Foto</div>
-                </div>
-                <div class="count-card nao-avaliado">
-                    <div class="count-value">{{ info.nao_avaliado }}</div>
-                    <div class="count-label">Não Avaliado</div>
-                </div>
             </div>
+            {% if info.nao_conforme %}
+            <div class="breakdown">
+                Das <strong>{{ info.nao_conforme }}</strong> inspeções não conformes:
+                {{ info.with_nc }} com pelo menos 1 NC, {{ info.with_sf }} com pelo menos 1 SF.
+            </div>
+            {% endif %}
 
             <div class="reasons">
                 <div class="reason-box">
@@ -96,6 +101,27 @@
                 </div>
             </div>
 
+            {% if info.failing_inspections %}
+            <div class="failing-list">
+                <h3>Inspeções não conformes ({{ info.failing_inspections|length }})</h3>
+                {% for fi in info.failing_inspections %}
+                <div class="failing-row">
+                    <div class="tss">{{ fi.tss or "—" }}</div>
+                    <div>
+                        {% for s in fi.failed_stages %}
+                        <span class="stage {% if s.code == 'SF' %}sf{% endif %}">{{ s.stage }} · {{ s.code }}</span>
+                        {% endfor %}
+                    </div>
+                    {% for s in fi.failed_stages %}
+                        {% if s.observation %}
+                        <span class="obs">{{ s.stage }}: {{ s.observation }}</span>
+                        {% endif %}
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
             {% if info.tss_summary %}
             <div class="tss-list">
                 <h3>Serviços (TSS) realizados</h3>
@@ -116,7 +142,7 @@
     {% endif %}
 
     <div class="footnote">
-        <strong>Conforme</strong> é o único resultado positivo. <strong>Não Conforme</strong> e <strong>Sem Foto</strong> contam como falhas; <strong>Não Avaliado</strong> é informativo (etapa não aplicável ao serviço, sem penalidade).
+        Os totais são por <strong>OS (inspeção)</strong>: uma inspeção é <em>Conforme</em> apenas quando todas as etapas avaliadas são <em>C</em>. Qualquer <em>NC</em> ou <em>SF</em> torna a OS Não Conforme; <em>NA</em> (etapa não aplicável) não é falha.
     </div>
 </body>
 </html>

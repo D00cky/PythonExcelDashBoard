@@ -121,12 +121,18 @@ class SabespPimentasTemplate:
         return rows
 
     def extract_team_detail(self, path: Path, team_name: str) -> dict[str, dict]:
-        """Per-service breakdown for one team.
+        """Per-service breakdown for one team, at the OS (inspection) level.
 
-        Returns {service: {conforme, nao_conforme, sem_foto, nao_avaliado,
-        inspecoes, top_nc_reason, top_sf_reason, tss_summary}}. Reasons
-        are tuples (text, count) of the most common observation paired
-        with NC / SF stage cells. tss_summary is [(tss, count), ...].
+        Returns {service: {inspecoes, conforme, nao_conforme, with_nc,
+        with_sf, top_nc_reason, top_sf_reason, tss_summary,
+        failing_inspections}}.
+
+        ``conforme + nao_conforme == inspecoes``. An inspection is conforme
+        iff every stage cell is 'C' (NA / blank do not count as failures).
+        ``with_nc`` / ``with_sf`` are informational subsets of
+        ``nao_conforme``: inspections with at least one NC / SF stage.
+        ``failing_inspections`` lists every not-conforme OS with TSS and
+        the stages that failed plus their observation text when present.
         """
         target = team_name.strip()
         result: dict[str, dict] = {}
@@ -144,16 +150,13 @@ class SabespPimentasTemplate:
                 continue
 
             pairs = _stage_observation_pairs(sub, exclude={team_col, tss_col})
-            counts = _stage_code_counts(sub, [s for s, _ in pairs])
             result[service] = {
                 "inspecoes": int(len(sub)),
-                "conforme": counts.get("C", 0),
-                "nao_conforme": counts.get("NC", 0),
-                "sem_foto": counts.get("SF", 0),
-                "nao_avaliado": counts.get("NA", 0),
+                **_os_conformity_summary(sub, [s for s, _ in pairs]),
                 "top_nc_reason": _top_reason(_collect_reasons(sub, pairs, "NC")),
                 "top_sf_reason": _top_reason(_collect_reasons(sub, pairs, "SF")),
                 "tss_summary": _top_tss(sub, tss_col),
+                "failing_inspections": _failing_inspections(sub, pairs, tss_col),
             }
         return result
 
@@ -473,6 +476,57 @@ def _conformity_chart(
             legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
         ),
     )
+
+
+def _os_conformity_summary(sub: pd.DataFrame, stage_cols: list[str]) -> dict[str, int]:
+    """OS-level conformity for a team-service slice.
+
+    An OS is conforme iff none of its stages is 'NC' or 'SF'. ``with_nc``
+    / ``with_sf`` count OSes that have at least one stage cell in that
+    code — informational subsets of ``nao_conforme``.
+    """
+    if not stage_cols:
+        return {"conforme": 0, "nao_conforme": 0, "with_nc": 0, "with_sf": 0}
+    stages = sub[stage_cols].astype(str).apply(lambda s: s.str.strip())
+    is_failing = stages.isin(_FAILING_STAGE_CODES).any(axis=1)
+    return {
+        "conforme": int((~is_failing).sum()),
+        "nao_conforme": int(is_failing.sum()),
+        "with_nc": int((stages == "NC").any(axis=1).sum()),
+        "with_sf": int((stages == "SF").any(axis=1).sum()),
+    }
+
+
+def _failing_inspections(
+    sub: pd.DataFrame,
+    pairs: list[tuple[str, str | None]],
+    tss_col: str | None,
+) -> list[dict]:
+    """Rows where at least one stage is NC or SF, with per-stage detail."""
+    if not pairs:
+        return []
+    out: list[dict] = []
+    for _, row in sub.iterrows():
+        failed: list[dict] = []
+        for stage_col, obs_col in pairs:
+            val = str(row[stage_col]).strip() if pd.notna(row[stage_col]) else ""
+            if val not in _FAILING_STAGE_CODES:
+                continue
+            observation = (
+                str(row[obs_col]).strip()
+                if obs_col is not None and pd.notna(row[obs_col])
+                else None
+            )
+            failed.append({"stage": stage_col, "code": val, "observation": observation})
+        if not failed:
+            continue
+        tss = (
+            str(row[tss_col]).strip()
+            if tss_col is not None and pd.notna(row[tss_col])
+            else ""
+        )
+        out.append({"tss": tss, "failed_stages": failed})
+    return out
 
 
 def _stage_code_counts(sub: pd.DataFrame, stage_cols: list[str]) -> dict[str, int]:
