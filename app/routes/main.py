@@ -1,4 +1,5 @@
 import uuid
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -63,13 +64,12 @@ def dashboard(upload_id: str) -> str:
     return render_template(
         "dashboard.html",
         download_action=url_for("main.download", upload_id=upload_id),
-        **_build_sabesp_context(
-            template,
-            workbook,
-            path,
-            filter_start=filter_start,
-            filter_end=filter_end,
-            swap_dates=swap_dates,
+        **_cached_sabesp_context(
+            str(path),
+            path.stat().st_mtime_ns,
+            _iso(filter_start),
+            _iso(filter_end),
+            swap_dates,
         ),
     )
 
@@ -239,6 +239,29 @@ def _build_sabesp_context(
         "recomputed": recomputed,
         "span_warning": span_warning,
     }
+
+
+@lru_cache(maxsize=64)
+def _cached_sabesp_context(
+    path_str: str,
+    mtime_ns: int,  # noqa: ARG001 — cache key only; invalidates when the file changes
+    filter_start_iso: str,
+    filter_end_iso: str,
+    swap_dates: bool,
+) -> dict[str, Any]:
+    """Memoised dashboard context — same file + same filter → reuse rendered figures."""
+    path = Path(path_str)
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    template = recognize(workbook.sheetnames)
+    assert isinstance(template, SabespPimentasTemplate)  # route guards this
+    return _build_sabesp_context(
+        template,
+        workbook,
+        path,
+        filter_start=_parse_iso_date(filter_start_iso),
+        filter_end=_parse_iso_date(filter_end_iso),
+        swap_dates=swap_dates,
+    )
 
 
 def _date_bounds(df: pd.DataFrame) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
