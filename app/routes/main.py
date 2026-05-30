@@ -184,15 +184,17 @@ def _build_sabesp_context(
 
     per_service_sections = []
     for idx, service in enumerate(sorted(template.SERVICE_SHEETS)):
+        team_html = template.build_team_conformity_for_service(inspections, service).to_html(
+            include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"
+        )
+        tss_html = template.build_tss_conformity_for_service(inspections, service).to_html(
+            include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"
+        )
         per_service_sections.append(
             {
                 "service": service,
-                "team_chart": template.build_team_conformity_for_service(
-                    inspections, service
-                ).to_html(include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"),
-                "tss_chart": template.build_tss_conformity_for_service(
-                    inspections, service
-                ).to_html(include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"),
+                "team_chart": _defer_plotly_script(team_html),
+                "tss_chart": _defer_plotly_script(tss_html),
             }
         )
 
@@ -239,6 +241,17 @@ def _build_sabesp_context(
         "recomputed": recomputed,
         "span_warning": span_warning,
     }
+
+
+def _defer_plotly_script(chart_html: str) -> str:
+    """Mark a Plotly chart's inline script so it does not execute on page load.
+
+    The dashboard bootstrap (see dashboard.html) revives these scripts when
+    the surrounding section scrolls into view. Plotly emits exactly one
+    untyped <script> per chart, so a single replacement is sufficient and
+    unambiguous.
+    """
+    return chart_html.replace("<script>", '<script type="text/plotly-defer">', 1)
 
 
 @lru_cache(maxsize=64)

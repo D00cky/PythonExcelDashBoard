@@ -211,5 +211,35 @@
     {% endfor %}
 
     <footer>Gerado a partir de Relatório Semanal — Polo {{ polo_name }}</footer>
+
+    <script>
+        // Lazy-render per-service Plotly charts when the section scrolls into view.
+        // Their <script> tags are emitted with type="text/plotly-defer" so the browser
+        // parses but does not execute them; we revive each by cloning to text/javascript.
+        (function () {
+            var sections = document.querySelectorAll('.service-section');
+            if (!sections.length) return;
+            var revive = function (section) {
+                var pending = section.querySelectorAll('script[type="text/plotly-defer"]');
+                pending.forEach(function (node) {
+                    var live = document.createElement('script');
+                    live.text = node.textContent;
+                    node.parentNode.replaceChild(live, node);
+                });
+            };
+            if (!('IntersectionObserver' in window)) {
+                sections.forEach(revive);
+                return;
+            }
+            var io = new IntersectionObserver(function (entries) {
+                entries.forEach(function (entry) {
+                    if (!entry.isIntersecting) return;
+                    revive(entry.target);
+                    io.unobserve(entry.target);
+                });
+            }, { rootMargin: '300px 0px' });
+            sections.forEach(function (s) { io.observe(s); });
+        })();
+    </script>
 </body>
 </html>
