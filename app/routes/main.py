@@ -44,7 +44,7 @@ def upload():
 @bp.get("/dashboard/<upload_id>")
 def dashboard(upload_id: str) -> str:
     path = _upload_path(upload_id)
-    workbook = load_workbook(path, data_only=True)
+    workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
     if not isinstance(template, SabespPimentasTemplate):
         return render_template("dashboard_unknown.html", sheet_names=workbook.sheetnames)
@@ -62,7 +62,7 @@ def team_detail(upload_id: str) -> str:
     if not team_name:
         abort(400)
     path = _upload_path(upload_id)
-    workbook = load_workbook(path, data_only=True)
+    workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
     if not isinstance(template, SabespPimentasTemplate):
         abort(404)
@@ -88,7 +88,7 @@ def download(upload_id: str) -> Response:
         abort(400)
 
     path = _upload_path(upload_id)
-    workbook = load_workbook(path, data_only=True)
+    workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
     if not isinstance(template, SabespPimentasTemplate):
         abort(404)

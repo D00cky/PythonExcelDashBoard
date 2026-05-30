@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -129,12 +130,11 @@ class SabespPimentasTemplate:
         """
         target = team_name.strip()
         result: dict[str, dict] = {}
+        sheets = self._service_sheets(path)
         for service in sorted(self.SERVICE_SHEETS):
-            try:
-                df = pd.read_excel(path, sheet_name=service, engine="openpyxl")
-            except (ValueError, KeyError):
+            df = sheets.get(service)
+            if df is None:
                 continue
-            df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
             team_col = _ci_column(df, "EQUIPE")
             tss_col = _ci_column(df, "Descrição TSS")
             if team_col is None:
@@ -200,18 +200,20 @@ class SabespPimentasTemplate:
         the count of 'NC'. start_date comes from 'Data Início Execução'
         (column L in the real file) and is coerced to datetime.
         """
+        cached = _inspections_cache_get(path)
+        if cached is not None:
+            return cached
         parts: list[pd.DataFrame] = []
+        sheets = self._service_sheets(path)
         for service in sorted(self.SERVICE_SHEETS):
-            try:
-                df = pd.read_excel(path, sheet_name=service, engine="openpyxl")
-            except (ValueError, KeyError):
+            df = sheets.get(service)
+            if df is None:
                 continue
-            df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
             team_col = _ci_column(df, "EQUIPE")
             tss_col = _ci_column(df, "Descrição TSS")
             if team_col is None or tss_col is None:
                 continue
-            df = df.dropna(subset=[team_col, tss_col])
+            df = df.dropna(subset=[team_col, tss_col]).copy()
 
             stage_cols = _detect_stage_columns(df, exclude={team_col, tss_col})
             if stage_cols:
@@ -232,7 +234,7 @@ class SabespPimentasTemplate:
             df["service"] = service
             parts.append(df)
         if not parts:
-            return pd.DataFrame(
+            result = pd.DataFrame(
                 columns=[
                     "team",
                     "tss",
@@ -242,7 +244,15 @@ class SabespPimentasTemplate:
                     "start_date",
                 ]
             )
-        return pd.concat(parts, ignore_index=True)
+        else:
+            result = pd.concat(parts, ignore_index=True)
+        _inspections_cache_put(path, result)
+        return result
+
+    def _service_sheets(self, path: Path) -> dict[str, pd.DataFrame]:
+        return _read_service_sheets_cached(
+            str(path), path.stat().st_mtime_ns, tuple(sorted(self.SERVICE_SHEETS))
+        )
 
     def build_service_iqs_bar(self, rows: list[ServiceIQS]) -> go.Figure:
         return go.Figure(
@@ -388,6 +398,36 @@ class SabespPimentasTemplate:
                 legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
             ),
         )
+
+
+@lru_cache(maxsize=8)
+def _read_service_sheets_cached(
+    path_str: str, mtime_ns: int, services: tuple[str, ...]
+) -> dict[str, pd.DataFrame]:
+    xf = pd.ExcelFile(path_str, engine="calamine")
+    out: dict[str, pd.DataFrame] = {}
+    for service in services:
+        if service not in xf.sheet_names:
+            continue
+        df = xf.parse(service)
+        df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
+        out[service] = df
+    return out
+
+
+_INSPECTIONS_CACHE: dict[tuple[str, int], pd.DataFrame] = {}
+_INSPECTIONS_CACHE_MAX = 8
+
+
+def _inspections_cache_get(path: Path) -> pd.DataFrame | None:
+    return _INSPECTIONS_CACHE.get((str(path), path.stat().st_mtime_ns))
+
+
+def _inspections_cache_put(path: Path, df: pd.DataFrame) -> None:
+    key = (str(path), path.stat().st_mtime_ns)
+    if len(_INSPECTIONS_CACHE) >= _INSPECTIONS_CACHE_MAX:
+        _INSPECTIONS_CACHE.pop(next(iter(_INSPECTIONS_CACHE)))
+    _INSPECTIONS_CACHE[key] = df
 
 
 _SERVICE_COLORS = {
