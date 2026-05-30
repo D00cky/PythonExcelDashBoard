@@ -29,14 +29,44 @@
         .service-section h2 { margin: 0 0 1rem; color: #264653; font-size: 1.4rem; }
         .chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
         @media (min-width: 1000px) { .chart-grid { grid-template-columns: 1fr 1fr; } }
+        .filter-bar { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; padding: 0.9rem 1.1rem; background: #f7f9f8; border: 1px solid #e0e6e4; border-radius: 8px; margin: 1rem 0; }
+        .filter-bar label { font-size: 0.78rem; color: #555; text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.25rem; }
+        .filter-bar input[type="date"] { padding: 0.45rem 0.6rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; }
+        .filter-bar button { padding: 0.55rem 1.1rem; background: #2a9d8f; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.92rem; }
+        .filter-bar button:hover { background: #1f7e72; }
+        .filter-bar a.reset { color: #b14732; text-decoration: none; font-size: 0.88rem; padding: 0.55rem 0.4rem; }
+        .filter-bar a.reset:hover { text-decoration: underline; }
+        .filter-bar .hint { font-size: 0.82rem; color: #666; margin-left: auto; align-self: center; }
+        .filter-bar .hint strong { color: #2a9d8f; }
+        .warning-banner { background: #fff3d6; border-left: 5px solid #e9c46a; color: #6c4f00; padding: 0.9rem 1.1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.93rem; line-height: 1.45; }
     </style>
 </head>
 <body>
     <header>
         <div class="topbar"><a href="/" class="home-link">← Página inicial / Novo dashboard</a></div>
         <h1>Dashboard SABESP — Polo {{ polo_name }}</h1>
-        {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong></div>{% endif %}
+        {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong>{% if is_filtered %} <em>(filtrado)</em>{% endif %}</div>{% endif %}
     </header>
+
+    {% if span_warning %}
+    <div class="warning-banner">⚠ {{ span_warning }}</div>
+    {% endif %}
+
+    {% if available_start and available_end %}
+    <form class="filter-bar" method="get" action="">
+        <div>
+            <label for="start">De</label>
+            <input type="date" id="start" name="start" value="{{ filter_start }}" min="{{ available_start }}" max="{{ available_end }}">
+        </div>
+        <div>
+            <label for="end">Até</label>
+            <input type="date" id="end" name="end" value="{{ filter_end }}" min="{{ available_start }}" max="{{ available_end }}">
+        </div>
+        <button type="submit">Filtrar período</button>
+        {% if is_filtered %}<a class="reset" href="?">Limpar</a>{% endif %}
+        <div class="hint">Dados disponíveis: <strong>{{ available_start }}</strong> a <strong>{{ available_end }}</strong></div>
+    </form>
+    {% endif %}
 
     <div class="kpi-row">
         {% if iqs_overall is not none %}

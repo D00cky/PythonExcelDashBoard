@@ -201,3 +201,75 @@ def test_team_detail_returns_404_when_team_absent_from_sheets(client, tmp_path):
     response = client.get(f"/dashboard/{upload_id}/team?name=NOBODY")
 
     assert response.status_code == 404
+
+
+def test_dashboard_shows_date_filter_form_with_available_range(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/dashboard/{upload_id}")
+
+    body = response.data.decode("utf-8")
+    # Fixture inspections span 2026-03-05..2026-03-29
+    assert 'id="start"' in body
+    assert 'id="end"' in body
+    assert "2026-03-05" in body  # available_start in form
+    assert "2026-03-29" in body  # available_end in form
+    assert "(filtrado)" not in body  # not filtered by default
+
+
+def test_dashboard_date_filter_restricts_period_and_inspections(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(
+        f"/dashboard/{upload_id}?start=2026-03-15&end=2026-03-25"
+    )
+
+    body = response.data.decode("utf-8")
+    assert response.status_code == 200
+    assert "(filtrado)" in body
+    # Within 2026-03-15..2026-03-25 the surviving rows span 15/03 (ESGOTO row)
+    # to 25/03 (ÁGUA / FERNANDO row).
+    assert "15/03/2026 à 25/03/2026" in body
+    assert 'value="2026-03-15"' in body
+    assert 'value="2026-03-25"' in body
+
+
+def test_dashboard_warns_when_inspection_span_exceeds_60_days(client, tmp_path):
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.title = "CAPA"
+    wb.create_sheet("DADOS - PIMENTAS")
+    ws = wb.create_sheet("ÁGUA")
+    wb.create_sheet("ESGOTO")
+    ws["A1"] = "Descrição TSS"
+    ws["B1"] = "Data Início Execução"
+    ws["C1"] = "EQUIPE"
+    ws["D1"] = "FACHADA"
+    from datetime import datetime
+    ws["A2"], ws["B2"], ws["C2"], ws["D2"] = "T1", datetime(2026, 1, 5), "ALICE", "C"
+    ws["A3"], ws["B3"], ws["C3"], ws["D3"] = "T1", datetime(2026, 4, 5), "ALICE", "C"
+    path = tmp_path / "wide.xlsx"
+    wb.save(path)
+
+    upload = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(path.read_bytes()), "wide.xlsx")},
+        content_type="multipart/form-data",
+    )
+    upload_id = upload.location.removeprefix("/dashboard/")
+
+    response = client.get(f"/dashboard/{upload_id}")
+    body = response.data.decode("utf-8")
+    assert "dia/mês trocados" in body
+    assert "warning-banner" in body
+
+
+def test_dashboard_ignores_invalid_date_params(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/dashboard/{upload_id}?start=not-a-date&end=also-bad")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "(filtrado)" not in body

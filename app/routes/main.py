@@ -2,6 +2,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+import pandas as pd
 from flask import (
     Blueprint,
     Response,
@@ -50,10 +51,20 @@ def dashboard(upload_id: str) -> str:
     if not isinstance(template, SabespPimentasTemplate):
         return render_template("dashboard_unknown.html", sheet_names=workbook.sheetnames)
 
+    filter_start = _parse_iso_date(request.args.get("start", ""))
+    filter_end = _parse_iso_date(request.args.get("end", ""))
+
     return render_template(
         "dashboard.html",
         download_action=url_for("main.download", upload_id=upload_id),
-        **_build_sabesp_context(template, workbook, path, plotly_mode="cdn"),
+        **_build_sabesp_context(
+            template,
+            workbook,
+            path,
+            plotly_mode="cdn",
+            filter_start=filter_start,
+            filter_end=filter_end,
+        ),
     )
 
 
@@ -116,14 +127,35 @@ def _periodo_from_inspections(df) -> str | None:
     return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"
 
 
+def _parse_iso_date(value: str) -> pd.Timestamp | None:
+    """Parse YYYY-MM-DD from an <input type=date>; return None when invalid."""
+    if not value:
+        return None
+    try:
+        return pd.Timestamp(value)
+    except (ValueError, TypeError):
+        return None
+
+
+_SUSPICIOUS_SPAN_DAYS = 60
+
+
 def _build_sabesp_context(
     template: SabespPimentasTemplate,
     workbook,
     path: Path,
     plotly_mode: Literal["cdn", "inline"],
+    filter_start: pd.Timestamp | None = None,
+    filter_end: pd.Timestamp | None = None,
 ) -> dict[str, Any]:
     iqs_rows = template.extract_iqs_by_service(workbook)
-    inspections = template.extract_inspections(path)
+    full_inspections = template.extract_inspections(path)
+
+    available_start, available_end = _date_bounds(full_inspections)
+    span_warning = _date_span_warning(available_start, available_end)
+    inspections = _apply_date_filter(full_inspections, filter_start, filter_end)
+    is_filtered = filter_start is not None or filter_end is not None
+
     periodo = _periodo_from_inspections(inspections) or template.extract_periodo(workbook)
     teams_sorted = (
         sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
@@ -166,4 +198,55 @@ def _build_sabesp_context(
         ),
         "per_service_sections": per_service_sections,
         "teams_sorted": teams_sorted,
+        "filter_start": _iso(filter_start),
+        "filter_end": _iso(filter_end),
+        "available_start": _iso(available_start),
+        "available_end": _iso(available_end),
+        "is_filtered": is_filtered,
+        "span_warning": span_warning,
     }
+
+
+def _date_bounds(df: pd.DataFrame) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    if df.empty or "start_date" not in df.columns:
+        return None, None
+    dates = df["start_date"].dropna()
+    if dates.empty:
+        return None, None
+    return dates.min().normalize(), dates.max().normalize()
+
+
+def _apply_date_filter(
+    df: pd.DataFrame,
+    start: pd.Timestamp | None,
+    end: pd.Timestamp | None,
+) -> pd.DataFrame:
+    if df.empty or "start_date" not in df.columns:
+        return df
+    mask = pd.Series(True, index=df.index)
+    if start is not None:
+        mask &= df["start_date"] >= start
+    if end is not None:
+        # End is inclusive on the day — bump to end of day.
+        mask &= df["start_date"] < (end + pd.Timedelta(days=1))
+    return df[mask]
+
+
+def _date_span_warning(
+    start: pd.Timestamp | None, end: pd.Timestamp | None
+) -> str | None:
+    if start is None or end is None:
+        return None
+    span_days = (end - start).days
+    if span_days <= _SUSPICIOUS_SPAN_DAYS:
+        return None
+    return (
+        f"Atenção: as datas das inspeções abrangem {span_days} dias "
+        f"({start:%d/%m/%Y} → {end:%d/%m/%Y}). Isso pode indicar dia/mês "
+        "trocados na planilha original. Use o filtro abaixo para focar "
+        "no período correto."
+    )
+
+
+def _iso(ts: pd.Timestamp | None) -> str:
+    return ts.strftime("%Y-%m-%d") if ts is not None else ""
