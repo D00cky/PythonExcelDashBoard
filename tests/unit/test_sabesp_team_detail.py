@@ -54,9 +54,7 @@ def test_extract_team_detail_tss_summary_lists_distinct_services(tmp_path):
 def test_extract_team_detail_trims_whitespace_in_team_name(tmp_path):
     path = make_minimal_sabesp(tmp_path, with_inspections=True)
 
-    detail = SabespPimentasTemplate().extract_team_detail(
-        path, "  JOSIAS ALMEIDA FRANCISCO  "
-    )
+    detail = SabespPimentasTemplate().extract_team_detail(path, "  JOSIAS ALMEIDA FRANCISCO  ")
 
     assert "ÁGUA" in detail
 

@@ -89,8 +89,8 @@ def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
     assert "05/03/2026 à 29/03/2026" in body
     assert "66.1%" in body
     assert "Polo Pimentas" in body
-    # 5 top-level figures + 4 services × (team + tss) per-service charts = 13
-    assert body.count('class="plotly-graph-div"') == 13
+    # 5 top-level figures + 2 NC focus figures + 4 services × (team + tss) = 15
+    assert body.count('class="plotly-graph-div"') == 15
     assert "Listas de Verificação" not in body
     assert "Fotos Avaliadas" in body
     assert "Inspeções Avaliadas" in body
@@ -171,9 +171,7 @@ def test_download_returns_400_for_unsupported_format(client, tmp_path):
 def test_team_detail_renders_breakdown_for_known_team(client, tmp_path):
     upload_id = _upload_minimal(client, tmp_path)
 
-    response = client.get(
-        f"/dashboard/{upload_id}/team?name=JOSIAS+ALMEIDA+FRANCISCO"
-    )
+    response = client.get(f"/dashboard/{upload_id}/team?name=JOSIAS+ALMEIDA+FRANCISCO")
 
     assert response.status_code == 200
     body = response.data.decode("utf-8")
@@ -220,9 +218,7 @@ def test_dashboard_shows_date_filter_form_with_available_range(client, tmp_path)
 def test_dashboard_date_filter_restricts_period_and_inspections(client, tmp_path):
     upload_id = _upload_minimal(client, tmp_path)
 
-    response = client.get(
-        f"/dashboard/{upload_id}?start=2026-03-15&end=2026-03-25"
-    )
+    response = client.get(f"/dashboard/{upload_id}?start=2026-03-15&end=2026-03-25")
 
     body = response.data.decode("utf-8")
     assert response.status_code == 200
@@ -247,6 +243,7 @@ def test_dashboard_warns_when_inspection_span_exceeds_60_days(client, tmp_path):
     ws["C1"] = "EQUIPE"
     ws["D1"] = "FACHADA"
     from datetime import datetime
+
     ws["A2"], ws["B2"], ws["C2"], ws["D2"] = "T1", datetime(2026, 1, 5), "ALICE", "C"
     ws["A3"], ws["B3"], ws["C3"], ws["D3"] = "T1", datetime(2026, 4, 5), "ALICE", "C"
     path = tmp_path / "wide.xlsx"
@@ -343,9 +340,7 @@ def test_dashboard_swap_does_not_break_already_correct_files(client, tmp_path):
 def test_dashboard_recomputes_kpis_when_filter_active(client, tmp_path):
     upload_id = _upload_minimal(client, tmp_path)
 
-    response = client.get(
-        f"/dashboard/{upload_id}?start=2026-03-15&end=2026-03-29"
-    )
+    response = client.get(f"/dashboard/{upload_id}?start=2026-03-15&end=2026-03-29")
 
     body = response.data.decode("utf-8")
     assert response.status_code == 200

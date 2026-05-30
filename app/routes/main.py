@@ -21,6 +21,7 @@ from app.core.templates.sabesp_pimentas import (
     SabespPimentasTemplate,
     ServiceIC,
     ServiceIQS,
+    top_observations,
 )
 
 bp = Blueprint("main", __name__)
@@ -156,12 +157,15 @@ def _build_sabesp_context(
     swap_dates: bool = False,
 ) -> dict[str, Any]:
     full_inspections = template.extract_inspections(path)
+    full_failures = template.extract_stage_failures(path)
     if swap_dates:
         full_inspections = _swap_day_month(full_inspections)
+        full_failures = _swap_day_month(full_failures)
 
     available_start, available_end = _date_bounds(full_inspections)
     span_warning = _date_span_warning(available_start, available_end, swapped=swap_dates)
     inspections = _apply_date_filter(full_inspections, filter_start, filter_end)
+    failures = _apply_date_filter(full_failures, filter_start, filter_end)
     is_filtered = filter_start is not None or filter_end is not None
     recomputed = is_filtered or swap_dates
 
@@ -215,6 +219,17 @@ def _build_sabesp_context(
         "fig_tss": template.build_tss_distribution(inspections).to_html(
             include_plotlyjs=False, full_html=False, div_id="tss-distribution"
         ),
+        "fig_failing_stages": template.build_top_failing_stages(failures).to_html(
+            include_plotlyjs=False, full_html=False, div_id="failing-stages"
+        ),
+        "fig_worst_teams": template.build_worst_teams(inspections).to_html(
+            include_plotlyjs=False, full_html=False, div_id="worst-teams"
+        ),
+        "top_nc_observations": top_observations(failures, "NC"),
+        "top_sf_observations": top_observations(failures, "SF"),
+        "total_failing_os": int(inspections["nao_conforme_count"].sum())
+        if not inspections.empty
+        else 0,
         "per_service_sections": per_service_sections,
         "teams_sorted": teams_sorted,
         "filter_start": _iso(filter_start),

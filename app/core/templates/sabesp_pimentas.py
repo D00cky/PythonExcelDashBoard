@@ -161,6 +161,17 @@ class SabespPimentasTemplate:
             }
         return result
 
+    def extract_stage_failures(self, path: Path) -> pd.DataFrame:
+        """Long-form view of every NC/SF stage cell across services.
+
+        Columns: service, stage, code, observation, team, tss, start_date.
+        One row per failing stage cell — letting callers ask "which stages
+        fail most often?", "what observations explain SF?", etc.
+        """
+        return _stage_failures_cached(
+            str(path), path.stat().st_mtime_ns, tuple(sorted(self.SERVICE_SHEETS))
+        )
+
     def extract_inspections(self, path: Path) -> pd.DataFrame:
         """Read the four service sheets, return one row per inspection.
 
@@ -328,6 +339,92 @@ class SabespPimentasTemplate:
             ),
         )
 
+    def build_top_failing_stages(self, failures: pd.DataFrame, top_n: int = 12) -> go.Figure:
+        """Horizontal stacked bar — which stages fail most (NC vs SF)."""
+        if failures.empty:
+            return _empty_figure("Sem etapas com falha registrada")
+        grouped = failures.groupby(["stage", "code"]).size().unstack(fill_value=0)
+        grouped["total"] = grouped.sum(axis=1)
+        grouped = grouped.sort_values("total", ascending=True).tail(top_n)
+        stages = grouped.index.tolist()
+        nc = grouped.get("NC", pd.Series(0, index=stages)).reindex(stages).tolist()
+        sf = grouped.get("SF", pd.Series(0, index=stages)).reindex(stages).tolist()
+        return go.Figure(
+            data=[
+                go.Bar(
+                    name="Não Conforme",
+                    y=stages,
+                    x=nc,
+                    orientation="h",
+                    marker_color="#e76f51",
+                ),
+                go.Bar(
+                    name="Sem Foto",
+                    y=stages,
+                    x=sf,
+                    orientation="h",
+                    marker_color="#e9c46a",
+                ),
+            ],
+            layout=go.Layout(
+                barmode="stack",
+                title=f"Etapas com mais Falhas (Top {len(stages)})",
+                xaxis={"title": "Ocorrências"},
+                yaxis={"title": "Etapa", "automargin": True},
+                template="plotly_white",
+                height=max(380, 30 * len(stages) + 120),
+                legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+            ),
+        )
+
+    def build_worst_teams(
+        self,
+        inspections: pd.DataFrame,
+        top_n: int = 10,
+        min_inspections: int = 3,
+    ) -> go.Figure:
+        """Horizontal bar of teams sorted by failure rate (% não-conforme)."""
+        if inspections.empty:
+            return _empty_figure("Sem inspeções registradas")
+        grouped = inspections.groupby("team").agg(
+            nao_conforme=("nao_conforme_count", "sum"),
+            total=("team", "size"),
+        )
+        grouped = grouped[grouped["total"] >= min_inspections]
+        if grouped.empty:
+            return _empty_figure(f"Nenhuma equipe com ≥ {min_inspections} inspeções no período")
+        grouped["fail_pct"] = grouped["nao_conforme"] / grouped["total"]
+        grouped = grouped[grouped["fail_pct"] > 0].sort_values("fail_pct", ascending=True)
+        if grouped.empty:
+            return _empty_figure("Nenhuma equipe com falhas no período")
+        grouped = grouped.tail(top_n)
+        teams = grouped.index.tolist()
+        pcts = (grouped["fail_pct"] * 100).tolist()
+        labels = [
+            f"{p:.0f}% ({int(nc)}/{int(t)})"
+            for p, nc, t in zip(pcts, grouped["nao_conforme"], grouped["total"], strict=True)
+        ]
+        return go.Figure(
+            data=[
+                go.Bar(
+                    y=teams,
+                    x=pcts,
+                    orientation="h",
+                    marker_color="#b14732",
+                    text=labels,
+                    textposition="outside",
+                )
+            ],
+            layout=go.Layout(
+                title=f"Equipes com Pior Conformidade (Top {len(teams)})",
+                xaxis={"title": "Não Conforme (%)", "range": [0, 105]},
+                yaxis={"title": "Equipe", "automargin": True},
+                template="plotly_white",
+                height=max(380, 30 * len(teams) + 120),
+                margin={"r": 90},
+            ),
+        )
+
 
 @lru_cache(maxsize=8)
 def _read_service_sheets_cached(
@@ -342,6 +439,57 @@ def _read_service_sheets_cached(
         df.columns = [c.strip() if isinstance(c, str) else c for c in df.columns]
         out[service] = df
     return out
+
+
+_STAGE_FAILURE_COLUMNS = (
+    "service",
+    "stage",
+    "code",
+    "observation",
+    "team",
+    "tss",
+    "start_date",
+)
+
+
+@lru_cache(maxsize=8)
+def _stage_failures_cached(path_str: str, mtime_ns: int, services: tuple[str, ...]) -> pd.DataFrame:
+    sheets = _read_service_sheets_cached(path_str, mtime_ns, services)
+    parts: list[pd.DataFrame] = []
+    for service in services:
+        df = sheets.get(service)
+        if df is None:
+            continue
+        team_col = _ci_column(df, "EQUIPE")
+        if team_col is None:
+            continue
+        tss_col = _ci_column(df, "Descrição TSS")
+        date_col = _ci_column(df, "Data Início Execução")
+        df = df.dropna(subset=[team_col]).copy()
+        pairs = _stage_observation_pairs(df, exclude={team_col, tss_col})
+        for stage_col, obs_col in pairs:
+            stage_norm = df[stage_col].astype(str).str.strip()
+            mask = stage_norm.isin(_FAILING_STAGE_CODES)
+            if not mask.any():
+                continue
+            sub = df.loc[mask].copy()
+            sub["service"] = service
+            sub["stage"] = stage_col
+            sub["code"] = stage_norm[mask].values
+            sub["observation"] = (
+                sub[obs_col].where(sub[obs_col].notna(), None).astype(object)
+                if obs_col is not None
+                else None
+            )
+            sub["team"] = sub[team_col].astype(str).str.strip()
+            sub["tss"] = sub[tss_col].astype(str).str.strip() if tss_col is not None else ""
+            sub["start_date"] = (
+                pd.to_datetime(sub[date_col], errors="coerce") if date_col is not None else pd.NaT
+            )
+            parts.append(sub[list(_STAGE_FAILURE_COLUMNS)])
+    if not parts:
+        return pd.DataFrame(columns=list(_STAGE_FAILURE_COLUMNS))
+    return pd.concat(parts, ignore_index=True)
 
 
 _INSPECTIONS_COLUMNS = (
@@ -359,9 +507,7 @@ _INSPECTIONS_COLUMNS = (
 
 
 @lru_cache(maxsize=8)
-def _inspections_cached(
-    path_str: str, mtime_ns: int, services: tuple[str, ...]
-) -> pd.DataFrame:
+def _inspections_cached(path_str: str, mtime_ns: int, services: tuple[str, ...]) -> pd.DataFrame:
     sheets = _read_service_sheets_cached(path_str, mtime_ns, services)
     parts: list[pd.DataFrame] = []
     for service in services:
@@ -382,9 +528,7 @@ def _inspections_cached(
             df["photo_conforme"] = (stages == "C").sum(axis=1).astype(int)
             df["photo_nc"] = (stages == "NC").sum(axis=1).astype(int)
             df["photo_sf"] = (stages == "SF").sum(axis=1).astype(int)
-            df["photo_total"] = (
-                df["photo_conforme"] + df["photo_nc"] + df["photo_sf"]
-            )
+            df["photo_total"] = df["photo_conforme"] + df["photo_nc"] + df["photo_sf"]
         else:
             df["conforme_count"] = 0
             df["nao_conforme_count"] = 0
@@ -548,11 +692,7 @@ def _failing_inspections(
             failed.append({"stage": stage_col, "code": val, "observation": observation})
         if not failed:
             continue
-        tss = (
-            str(row[tss_col]).strip()
-            if tss_col is not None and pd.notna(row[tss_col])
-            else ""
-        )
+        tss = str(row[tss_col]).strip() if tss_col is not None and pd.notna(row[tss_col]) else ""
         out.append({"os": _format_os(row, os_col), "tss": tss, "failed_stages": failed})
     return out
 
@@ -564,6 +704,37 @@ def _format_os(row: pd.Series, os_col: str | None) -> str:
     if isinstance(raw, float) and raw.is_integer():
         return str(int(raw))
     return str(raw).strip()
+
+
+def top_observations(failures: pd.DataFrame, code: str, n: int = 8) -> list[dict]:
+    """Most frequent observation texts paired with NC / SF stage cells.
+
+    Returns a list of {observation, stages, count} dicts, sorted by count.
+    Empty / missing observations are skipped (no reason text → can't show).
+    """
+    if failures.empty or "observation" not in failures.columns:
+        return []
+    sub = failures[failures["code"] == code]
+    sub = sub[sub["observation"].notna()]
+    if sub.empty:
+        return []
+    sub = sub.assign(observation=sub["observation"].astype(str).str.strip())
+    sub = sub[sub["observation"] != ""]
+    if sub.empty:
+        return []
+    grouped = (
+        sub.groupby("observation")
+        .agg(
+            count=("observation", "size"),
+            stages=("stage", lambda s: ", ".join(sorted(set(s)))),
+        )
+        .sort_values("count", ascending=False)
+        .head(n)
+    )
+    return [
+        {"observation": idx, "stages": row["stages"], "count": int(row["count"])}
+        for idx, row in grouped.iterrows()
+    ]
 
 
 def _stage_code_counts(sub: pd.DataFrame, stage_cols: list[str]) -> dict[str, int]:

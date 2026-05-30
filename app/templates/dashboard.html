@@ -43,6 +43,21 @@
         .warning-banner .swap-action:hover { background: #4d3700; }
         .badge-swap { background: #2a9d8f; color: white; padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.76rem; margin-left: 0.4rem; }
         .recomputed-note { font-size: 0.82rem; color: #666; padding: 0.4rem 0.75rem; background: #f1f5f4; border-radius: 4px; margin: 0.5rem 0 1rem; display: inline-block; }
+        .nc-focus { margin-top: 3rem; padding-top: 1.5rem; border-top: 3px solid #e76f51; }
+        .nc-focus h2 { color: #b14732; margin: 0 0 0.4rem; font-size: 1.6rem; }
+        .nc-intro { color: #555; font-size: 0.93rem; margin: 0 0 1.5rem; line-height: 1.5; }
+        .reasons-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.5rem; }
+        @media (min-width: 1000px) { .reasons-grid { grid-template-columns: 1fr 1fr; } }
+        .reasons-col h3 { font-size: 1rem; color: #264653; margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 0.4rem; }
+        .badge-nc, .badge-sf { font-size: 0.72rem; padding: 0.12rem 0.5rem; border-radius: 4px; color: white; letter-spacing: 0.04em; }
+        .badge-nc { background: #e76f51; }
+        .badge-sf { background: #e9c46a; color: #6c4f00; }
+        .reasons-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; background: white; }
+        .reasons-table th, .reasons-table td { padding: 0.5rem 0.65rem; border-bottom: 1px solid #eef1f0; text-align: left; vertical-align: top; }
+        .reasons-table th { color: #555; font-weight: 600; background: #f7f9f8; }
+        .reasons-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: #b14732; font-weight: 600; }
+        .reasons-table td:nth-child(2) { color: #777; font-size: 0.85rem; }
+        .reasons-empty { color: #888; font-style: italic; font-size: 0.9rem; padding: 1rem; background: #f7f9f8; border-radius: 6px; }
     </style>
 </head>
 <body>
@@ -142,6 +157,49 @@
     <div class="chart">{{ fig_photos | safe }}</div>
     <div class="chart">{{ fig_team_service | safe }}</div>
     <div class="chart">{{ fig_tss | safe }}</div>
+
+    <section class="nc-focus">
+        <h2>Foco em Não Conformes</h2>
+        <p class="nc-intro">Use estas visões para apontar especificamente o que cada equipe precisa corrigir: etapa que mais falha, equipes com maior taxa de erro, e as observações mais recorrentes nos campos NC e SF.</p>
+
+        <div class="chart-grid">
+            <div class="chart">{{ fig_failing_stages | safe }}</div>
+            <div class="chart">{{ fig_worst_teams | safe }}</div>
+        </div>
+
+        <div class="reasons-grid">
+            <div class="reasons-col">
+                <h3>Top motivos de <span class="badge-nc">NC</span></h3>
+                {% if top_nc_observations %}
+                <table class="reasons-table">
+                    <thead><tr><th>Observação</th><th>Etapa(s)</th><th>Qtd</th></tr></thead>
+                    <tbody>
+                        {% for r in top_nc_observations %}
+                        <tr><td>{{ r.observation }}</td><td>{{ r.stages }}</td><td>{{ r.count }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="reasons-empty">Sem observações registradas em células NC.</div>
+                {% endif %}
+            </div>
+            <div class="reasons-col">
+                <h3>Top motivos de <span class="badge-sf">SF</span></h3>
+                {% if top_sf_observations %}
+                <table class="reasons-table">
+                    <thead><tr><th>Observação</th><th>Etapa(s)</th><th>Qtd</th></tr></thead>
+                    <tbody>
+                        {% for r in top_sf_observations %}
+                        <tr><td>{{ r.observation }}</td><td>{{ r.stages }}</td><td>{{ r.count }}</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="reasons-empty">Sem observações registradas em células SF (provavelmente falta de foto/equipamento na execução).</div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
 
     {% for section in per_service_sections %}
     <section class="service-section">
