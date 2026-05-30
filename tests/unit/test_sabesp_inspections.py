@@ -36,7 +36,13 @@ def test_extract_inspections_returns_empty_frame_when_no_service_sheets(tmp_path
     assert set(df.columns) >= {"team", "tss", "service"}
 
 
-def test_extract_inspections_counts_conforme_and_nc_per_row(tmp_path):
+def test_extract_inspections_counts_conforme_and_nc_per_inspection(tmp_path):
+    """conforme_count / nao_conforme_count are 0/1 per OS row.
+
+    An inspection is conforme iff every stage cell is 'C' (NA / blank do
+    not count as failures). Any 'NC' or 'SF' makes the whole row not-
+    conforme. Summed over a team, the totals match the inspection count.
+    """
     path = make_minimal_sabesp(tmp_path, with_inspections=True)
 
     df = SabespPimentasTemplate().extract_inspections(path)
@@ -44,20 +50,35 @@ def test_extract_inspections_counts_conforme_and_nc_per_row(tmp_path):
     assert "conforme_count" in df.columns
     assert "nao_conforme_count" in df.columns
 
-    # ÁGUA / JOSIAS: row 1 (C,C) + row 2 (C,NC) = 3C, 1NC
+    # ÁGUA / JOSIAS: row (C,C) → conforme, row (C,NC) → not conforme.
     josias_agua = df[(df["service"] == "ÁGUA") & (df["team"] == "JOSIAS ALMEIDA FRANCISCO")]
-    assert josias_agua["conforme_count"].sum() == 3
+    assert josias_agua["conforme_count"].sum() == 1
     assert josias_agua["nao_conforme_count"].sum() == 1
 
-    # ÁGUA / LAIS: row 3 (NC,NC) + row 4 (C,SF) = 1C, 2NC
+    # ÁGUA / LAIS: row (NC,NC) → not conforme, row (C,SF) → not conforme.
     lais_agua = df[(df["service"] == "ÁGUA") & (df["team"] == "LAIS RAMOS SOBRAL")]
-    assert lais_agua["conforme_count"].sum() == 1
+    assert lais_agua["conforme_count"].sum() == 0
     assert lais_agua["nao_conforme_count"].sum() == 2
 
-    # ESGOTO / FERNANDO: 1 row (NC,NC) = 0C, 2NC
+    # ESGOTO / FERNANDO: 1 row (NC,NC) → not conforme.
     fern_esg = df[(df["service"] == "ESGOTO") & (df["team"].str.startswith("FERNANDO"))]
     assert fern_esg["conforme_count"].sum() == 0
-    assert fern_esg["nao_conforme_count"].sum() == 2
+    assert fern_esg["nao_conforme_count"].sum() == 1
+
+
+def test_extract_inspections_conforme_plus_nao_conforme_equals_inspections(tmp_path):
+    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+
+    df = SabespPimentasTemplate().extract_inspections(path)
+
+    # Per-row counts must split the row into exactly one bucket, so summed
+    # per team-service they equal the number of inspections for that group.
+    grouped = df.groupby(["service", "team"]).agg(
+        inspecoes=("team", "size"),
+        conforme=("conforme_count", "sum"),
+        nao_conforme=("nao_conforme_count", "sum"),
+    )
+    assert ((grouped["conforme"] + grouped["nao_conforme"]) == grouped["inspecoes"]).all()
 
 
 def test_extract_inspections_includes_start_date_per_row(tmp_path):

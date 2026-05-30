@@ -161,11 +161,14 @@ class SabespPimentasTemplate:
         """Read the four service sheets, return one row per inspection.
 
         Columns: team, tss, service, conforme_count, nao_conforme_count,
-        start_date. Stage columns (those whose only non-null values are in
-        {C, NC, SF, NA}) are auto-detected per sheet; conforme_count is the
-        count of 'C' cells across stage columns per row, nao_conforme_count
-        the count of 'NC'. start_date comes from 'Data Início Execução'
-        (column L in the real file) and is coerced to datetime.
+        start_date. ``conforme_count`` / ``nao_conforme_count`` are 0/1
+        per-row indicators at the OS (inspection) level: an inspection is
+        conforme iff every stage cell is ``C`` (``NA`` and blank are
+        treated as "not a failure"). Any ``NC`` or ``SF`` makes the whole
+        row not-conforme. Summing these columns therefore yields OS
+        totals that always equal the number of inspections — not cell
+        counts. start_date comes from 'Data Início Execução' and is
+        coerced to datetime.
         """
         return _inspections_cached(
             str(path), path.stat().st_mtime_ns, tuple(sorted(self.SERVICE_SHEETS))
@@ -365,8 +368,9 @@ def _inspections_cached(
         stage_cols = _detect_stage_columns(df, exclude={team_col, tss_col})
         if stage_cols:
             stages = df[stage_cols].astype(str).apply(lambda s: s.str.strip())
-            df["conforme_count"] = (stages == "C").sum(axis=1)
-            df["nao_conforme_count"] = (stages == "NC").sum(axis=1)
+            is_failing = stages.isin(_FAILING_STAGE_CODES).any(axis=1)
+            df["conforme_count"] = (~is_failing).astype(int)
+            df["nao_conforme_count"] = is_failing.astype(int)
         else:
             df["conforme_count"] = 0
             df["nao_conforme_count"] = 0
@@ -419,6 +423,7 @@ def _ci_column(df: pd.DataFrame, target: str) -> str | None:
 
 
 _STAGE_CODE_VALUES = frozenset({"C", "NC", "SF", "NA"})
+_FAILING_STAGE_CODES = frozenset({"NC", "SF"})
 
 
 def _conformity_chart(
