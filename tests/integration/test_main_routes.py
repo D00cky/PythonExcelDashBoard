@@ -70,10 +70,10 @@ def test_upload_persists_file_and_303_redirects_to_dashboard(client, app):
     assert saved.read_bytes() == payload
 
 
-def test_dashboard_renders_sabesp_kpis_and_two_figures(client, tmp_path):
-    from tests.fixtures.sabesp_minimal import make_minimal_sabesp
+def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
-    payload = make_minimal_sabesp(tmp_path, with_inspections=True).read_bytes()
+    payload = make_minimal_pimentas(tmp_path, with_inspections=True).read_bytes()
     upload_response = client.post(
         "/upload",
         data={"file": (io.BytesIO(payload), "report.xlsx")},
@@ -105,9 +105,9 @@ def test_dashboard_returns_404_for_unknown_id(client):
 
 
 def _upload_minimal(client, tmp_path) -> str:
-    from tests.fixtures.sabesp_minimal import make_minimal_sabesp
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
-    payload = make_minimal_sabesp(tmp_path, with_inspections=True).read_bytes()
+    payload = make_minimal_pimentas(tmp_path, with_inspections=True).read_bytes()
     upload = client.post(
         "/upload",
         data={"file": (io.BytesIO(payload), "report.xlsx")},
@@ -125,7 +125,7 @@ def test_download_md_returns_markdown_summary(client, tmp_path):
     assert response.mimetype == "text/markdown"
     assert f"dashboard-{upload_id}.md" in response.headers["Content-Disposition"]
     body = response.data.decode("utf-8")
-    assert body.startswith("# Dashboard SABESP")
+    assert body.startswith("# Dashboard")
     assert "Polo Pimentas" in body
     assert "05/03/2026 à 29/03/2026" in body
 

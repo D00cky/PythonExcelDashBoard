@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate
 
 
-def recognize(sheet_names: Iterable[str]) -> SabespPimentasTemplate | None:
-    return SabespPimentasTemplate.detect(sheet_names)
+def recognize(sheet_names: Iterable[str]) -> PimentasTemplate | None:
+    return PimentasTemplate.detect(sheet_names)

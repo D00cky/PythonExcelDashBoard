@@ -2,16 +2,16 @@ from pathlib import Path
 
 from openpyxl.workbook import Workbook
 
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate
 
 
-def render_markdown(template: SabespPimentasTemplate, workbook: Workbook, path: Path) -> str:
+def render_markdown(template: PimentasTemplate, workbook: Workbook, path: Path) -> str:
     inspections = template.extract_inspections(path)
     iqs_rows = template.extract_iqs_by_service(workbook)
     ic_rows = template.extract_ic_by_service(workbook)
 
     lines: list[str] = []
-    lines.append(f"# Dashboard SABESP — Polo {template.polo_name.title()}")
+    lines.append(f"# Dashboard — Polo {template.polo_name.title()}")
     lines.append("")
 
     periodo = _periodo(inspections) or template.extract_periodo(workbook)
@@ -35,7 +35,7 @@ def render_markdown(template: SabespPimentasTemplate, workbook: Workbook, path: 
         lines.append("")
 
     if iqs_rows:
-        lines.append("## Índice de Qualidade SABESP (IQS) por Serviço")
+        lines.append("## Índice de Qualidade (IQS) por Serviço")
         lines.append("")
         lines.append("| Serviço | Fotos Avaliadas | NC | Conforme | NC (%) | Conforme (%) |")
         lines.append("|---|---:|---:|---:|---:|---:|")

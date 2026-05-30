@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 
-from app.core.templates.sabesp_pimentas import (
-    SabespPimentasTemplate,
+from app.core.templates.pimentas import (
+    PimentasTemplate,
     ServiceIC,
     ServiceIQS,
 )
@@ -15,7 +15,7 @@ _ROWS = [
 
 
 def test_build_service_iqs_bar_has_one_bar_per_service():
-    fig = SabespPimentasTemplate().build_service_iqs_bar(_ROWS)
+    fig = PimentasTemplate().build_service_iqs_bar(_ROWS)
 
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 1
@@ -24,7 +24,7 @@ def test_build_service_iqs_bar_has_one_bar_per_service():
 
 
 def test_build_photo_conformity_stacked_has_nc_and_conforme_traces():
-    fig = SabespPimentasTemplate().build_photo_conformity_stacked(_ROWS)
+    fig = PimentasTemplate().build_photo_conformity_stacked(_ROWS)
 
     assert isinstance(fig, go.Figure)
     assert fig.layout.barmode == "stack"
@@ -42,7 +42,7 @@ def test_build_ic_bar_has_one_bar_per_service():
         ServiceIC("Reposição", 0.1, 1),
     ]
 
-    fig = SabespPimentasTemplate().build_ic_bar(rows)
+    fig = PimentasTemplate().build_ic_bar(rows)
 
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 1
@@ -61,7 +61,7 @@ def test_build_team_service_stacked_orders_by_total_descending_and_dedupes():
         }
     )
 
-    fig = SabespPimentasTemplate().build_team_service_stacked(df, top_n=3)
+    fig = PimentasTemplate().build_team_service_stacked(df, top_n=3)
 
     assert isinstance(fig, go.Figure)
     assert fig.layout.barmode == "stack"
@@ -85,7 +85,7 @@ def test_build_tss_distribution_top_n_horizontal_bar():
         }
     )
 
-    fig = SabespPimentasTemplate().build_tss_distribution(df, top_n=3)
+    fig = PimentasTemplate().build_tss_distribution(df, top_n=3)
 
     assert isinstance(fig, go.Figure)
     assert len(fig.data) == 1
@@ -111,7 +111,7 @@ def _conformity_df():
 
 
 def test_build_team_conformity_for_service_stacks_conforme_and_nc():
-    fig = SabespPimentasTemplate().build_team_conformity_for_service(
+    fig = PimentasTemplate().build_team_conformity_for_service(
         _conformity_df(), service="ÁGUA", top_n=3
     )
 
@@ -126,7 +126,7 @@ def test_build_team_conformity_for_service_stacks_conforme_and_nc():
 
 
 def test_build_tss_conformity_for_service_stacks_by_tss():
-    fig = SabespPimentasTemplate().build_tss_conformity_for_service(
+    fig = PimentasTemplate().build_tss_conformity_for_service(
         _conformity_df(), service="ÁGUA", top_n=3
     )
 

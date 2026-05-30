@@ -1,29 +1,29 @@
 import pandas as pd
 from openpyxl import Workbook
 
-from app.core.templates.sabesp_pimentas import (
-    SabespPimentasTemplate,
+from app.core.templates.pimentas import (
+    PimentasTemplate,
     _failing_inspections,
     _os_conformity_summary,
     _stage_code_counts,
     _top_reason,
     _top_tss,
 )
-from tests.fixtures.sabesp_minimal import make_minimal_sabesp
+from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
 
 def test_extract_team_detail_returns_empty_dict_when_team_absent(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    detail = SabespPimentasTemplate().extract_team_detail(path, "NOBODY")
+    detail = PimentasTemplate().extract_team_detail(path, "NOBODY")
 
     assert detail == {}
 
 
 def test_extract_team_detail_aggregates_per_service_os_counts(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    detail = SabespPimentasTemplate().extract_team_detail(path, "JOSIAS ALMEIDA FRANCISCO")
+    detail = PimentasTemplate().extract_team_detail(path, "JOSIAS ALMEIDA FRANCISCO")
 
     assert set(detail) == {"ÁGUA", "ESGOTO"}
     # JOSIAS in ÁGUA: row (C,C) → conforme; row (C,NC) → not conforme.
@@ -41,9 +41,9 @@ def test_extract_team_detail_aggregates_per_service_os_counts(tmp_path):
 
 
 def test_extract_team_detail_tss_summary_lists_distinct_services(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    detail = SabespPimentasTemplate().extract_team_detail(path, "JOSIAS ALMEIDA FRANCISCO")
+    detail = PimentasTemplate().extract_team_detail(path, "JOSIAS ALMEIDA FRANCISCO")
 
     assert dict(detail["ÁGUA"]["tss_summary"]) == {
         "TROCAR RAMAL DE ÁGUA PREVENTIVA": 1,
@@ -52,9 +52,9 @@ def test_extract_team_detail_tss_summary_lists_distinct_services(tmp_path):
 
 
 def test_extract_team_detail_trims_whitespace_in_team_name(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    detail = SabespPimentasTemplate().extract_team_detail(path, "  JOSIAS ALMEIDA FRANCISCO  ")
+    detail = PimentasTemplate().extract_team_detail(path, "  JOSIAS ALMEIDA FRANCISCO  ")
 
     assert "ÁGUA" in detail
 
@@ -71,7 +71,7 @@ def test_extract_team_detail_top_nc_reason_picks_most_common_observation(tmp_pat
         ],
     )
 
-    detail = SabespPimentasTemplate().extract_team_detail(path, "ALICE")
+    detail = PimentasTemplate().extract_team_detail(path, "ALICE")
 
     assert detail["ÁGUA"]["top_nc_reason"] == ("telhado quebrado", 2)
     assert detail["ÁGUA"]["top_sf_reason"] == ("sem foto da fachada", 1)
@@ -127,7 +127,7 @@ def test_extract_team_detail_failing_inspections_lists_each_bad_os(tmp_path):
         os_numbers=[1001, 1002, 1003],
     )
 
-    detail = SabespPimentasTemplate().extract_team_detail(path, "ALICE")
+    detail = PimentasTemplate().extract_team_detail(path, "ALICE")
     failing = detail["ÁGUA"]["failing_inspections"]
 
     assert [f["tss"] for f in failing] == ["TROCAR RAMAL", "TROCAR RAMAL"]
@@ -146,9 +146,7 @@ def test_failing_inspections_os_field_blank_when_column_missing(tmp_path):
         ],
     )
 
-    failing = SabespPimentasTemplate().extract_team_detail(path, "ALICE")["ÁGUA"][
-        "failing_inspections"
-    ]
+    failing = PimentasTemplate().extract_team_detail(path, "ALICE")["ÁGUA"]["failing_inspections"]
     assert failing[0]["os"] == ""
 
 

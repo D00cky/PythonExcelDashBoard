@@ -1,15 +1,14 @@
 # PythonExcelDashBoard
 
-Flask web app that turns an uploaded SABESP weekly audit report (`.xlsx`) into an
+Flask web app that turns an uploaded weekly polo audit report (`.xlsx`) into an
 interactive Plotly dashboard, with downloadable summaries in Markdown, Excel, PDF, and Word.
 
-Built for the SABESP "Polo Pimentas" report template, but the template layer is
-pluggable — adding support for another polo's layout is a single module under
-`app/core/templates/`.
+Built for the "Polo Pimentas" report template, but the template layer is pluggable —
+adding support for another polo's layout is a single module under `app/core/templates/`.
 
 ## Features
 
-- **Upload** a SABESP weekly `.xlsx`; uploads land in `instance/uploads/<uuid>.xlsx`.
+- **Upload** a weekly `.xlsx`; uploads land in `instance/uploads/<uuid>.xlsx`.
 - **Dashboard** with KPIs (IQS overall, fotos avaliadas, inspeções) and 13 Plotly figures
   (IC and IQS per service, photo conformity stacked, team × service, TSS distribution,
   per-service team / TSS conformity).
@@ -101,7 +100,7 @@ Open <http://127.0.0.1:5000>, upload an xlsx, follow the redirect to the dashboa
 ```
 
 Coverage gate is 90 %. Unit tests use openpyxl-built fixtures (see
-`tests/fixtures/sabesp_minimal.py`); integration tests use the Flask test client with a
+`tests/fixtures/pimentas_minimal.py`); integration tests use the Flask test client with a
 `tmp_path`-scoped instance folder (`tests/conftest.py`).
 
 ## Deploy
@@ -123,7 +122,7 @@ app/
 ├── core/
 │   ├── templates/
 │   │   ├── __init__.py     # recognize()
-│   │   └── sabesp_pimentas.py
+│   │   └── pimentas.py
 │   └── exporters/
 │       ├── __init__.py     # render_export(fmt, ...)
 │       ├── markdown.py
@@ -137,9 +136,9 @@ app/
     └── team_detail.html    # /dashboard/<id>/team
 tests/
 ├── conftest.py
-├── fixtures/sabesp_minimal.py
+├── fixtures/pimentas_minimal.py
 ├── unit/                   # extraction, figure builders, cache, swap helpers
 └── integration/            # Flask test client hitting the real routes
-Model/                      # real SABESP xlsx samples
+Model/                      # real polo xlsx samples
 instance/uploads/           # runtime upload destination (ephemeral on Render)
 ```

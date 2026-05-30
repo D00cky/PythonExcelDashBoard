@@ -45,10 +45,10 @@ _INSPECTION_ROWS = {
 }
 
 
-def make_minimal_sabesp(
+def make_minimal_pimentas(
     tmp_path: Path, *, with_periodo: bool = True, with_inspections: bool = False
 ) -> Path:
-    """Build a minimal SABESP-shape xlsx covering the cells we extract.
+    """Build a minimal polo-shape xlsx covering the cells we extract.
 
     Layout mirrors the real ``DADOS - PIMENTAS`` sheet:
       B4   period string
@@ -116,7 +116,7 @@ def make_minimal_sabesp(
                 ws[f"O{i}"] = fachada
                 ws[f"Q{i}"] = sinalizacao
 
-    path = tmp_path / "sabesp.xlsx"
+    path = tmp_path / "pimentas.xlsx"
     wb.save(path)
     return path
 

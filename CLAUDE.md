@@ -4,19 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-PythonExcelDashBoard — a Flask web app that turns an uploaded SABESP audit-report `.xlsx`
-into an interactive dashboard (Plotly), with a self-contained HTML download for offline viewing.
+PythonExcelDashBoard — a Flask web app that turns an uploaded weekly polo audit-report
+`.xlsx` into an interactive dashboard (Plotly), with a self-contained HTML download for
+offline viewing.
 
-Currently recognises the SABESP "Polo Pimentas" template (cover page `CAPA` + master sheet
+Currently recognises the "Polo Pimentas" template (cover page `CAPA` + master sheet
 `DADOS - PIMENTAS` + per-service sheets). Architecture supports adding more templates without
-changing route code; see `app/core/templates/` and `app/core/templates/sabesp_pimentas.py`.
+changing route code; see `app/core/templates/` and `app/core/templates/pimentas.py`.
 
 ## Workflow
 
 XP / TDD / pair programming. **Tight red → green → refactor loops**, one commit per cycle.
 
 - Tests live under `tests/`, mirroring `app/`. Unit tests use openpyxl-built fixtures
-  (see `tests/fixtures/sabesp_minimal.py`), not the real `Model/` xlsx — fast and
+  (see `tests/fixtures/pimentas_minimal.py`), not the real `Model/` xlsx — fast and
   intent-revealing.
 - Integration tests use the Flask test client + a `tmp_path`-scoped instance folder
   (see `tests/conftest.py`).

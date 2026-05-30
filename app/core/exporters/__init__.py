@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from openpyxl.workbook import Workbook
 
 if TYPE_CHECKING:
-    from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+    from app.core.templates.pimentas import PimentasTemplate
 
 _MIMETYPES = {
     "md": "text/markdown; charset=utf-8",
@@ -16,7 +16,7 @@ _MIMETYPES = {
 
 def render_export(
     fmt: str,
-    template: "SabespPimentasTemplate",
+    template: "PimentasTemplate",
     workbook: Workbook,
     path: Path,
 ) -> tuple[bytes, str]:

@@ -1,11 +1,11 @@
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
-from tests.fixtures.sabesp_minimal import make_minimal_sabesp
+from app.core.templates.pimentas import PimentasTemplate
+from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
 
 def test_extract_inspections_concatenates_service_sheets_with_team_and_tss(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    df = SabespPimentasTemplate().extract_inspections(path)
+    df = PimentasTemplate().extract_inspections(path)
 
     assert set(df["service"].unique()) == {"ÁGUA", "ESGOTO"}
     assert {"team", "tss", "service"} <= set(df.columns)
@@ -14,9 +14,9 @@ def test_extract_inspections_concatenates_service_sheets_with_team_and_tss(tmp_p
 
 
 def test_extract_inspections_dedupes_team_via_groupby(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    df = SabespPimentasTemplate().extract_inspections(path)
+    df = PimentasTemplate().extract_inspections(path)
     counts = df.groupby("team").size().sort_values(ascending=False)
 
     # JOSIAS appears 2× in ÁGUA + 1× in ESGOTO = 3
@@ -28,9 +28,9 @@ def test_extract_inspections_dedupes_team_via_groupby(tmp_path):
 
 
 def test_extract_inspections_returns_empty_frame_when_no_service_sheets(tmp_path):
-    path = make_minimal_sabesp(tmp_path)  # no inspections rows
+    path = make_minimal_pimentas(tmp_path)  # no inspections rows
 
-    df = SabespPimentasTemplate().extract_inspections(path)
+    df = PimentasTemplate().extract_inspections(path)
 
     assert df.empty
     assert set(df.columns) >= {"team", "tss", "service"}
@@ -43,9 +43,9 @@ def test_extract_inspections_counts_conforme_and_nc_per_inspection(tmp_path):
     not count as failures). Any 'NC' or 'SF' makes the whole row not-
     conforme. Summed over a team, the totals match the inspection count.
     """
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    df = SabespPimentasTemplate().extract_inspections(path)
+    df = PimentasTemplate().extract_inspections(path)
 
     assert "conforme_count" in df.columns
     assert "nao_conforme_count" in df.columns
@@ -67,9 +67,9 @@ def test_extract_inspections_counts_conforme_and_nc_per_inspection(tmp_path):
 
 
 def test_extract_inspections_conforme_plus_nao_conforme_equals_inspections(tmp_path):
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    df = SabespPimentasTemplate().extract_inspections(path)
+    df = PimentasTemplate().extract_inspections(path)
 
     # Per-row counts must split the row into exactly one bucket, so summed
     # per team-service they equal the number of inspections for that group.
@@ -84,9 +84,9 @@ def test_extract_inspections_conforme_plus_nao_conforme_equals_inspections(tmp_p
 def test_extract_inspections_includes_start_date_per_row(tmp_path):
     import pandas as pd
 
-    path = make_minimal_sabesp(tmp_path, with_inspections=True)
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
 
-    df = SabespPimentasTemplate().extract_inspections(path)
+    df = PimentasTemplate().extract_inspections(path)
 
     assert "start_date" in df.columns
     assert pd.api.types.is_datetime64_any_dtype(df["start_date"])

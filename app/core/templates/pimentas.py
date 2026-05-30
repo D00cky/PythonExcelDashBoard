@@ -45,7 +45,7 @@ class ServiceIQS:
     conforme_pct: float
 
 
-class SabespPimentasTemplate:
+class PimentasTemplate:
     SERVICE_SHEETS = frozenset({"ÁGUA", "ESGOTO", "CAVALETE", "REPOSIÇÃO"})
     MIN_SERVICES = 2
 
@@ -54,7 +54,7 @@ class SabespPimentasTemplate:
         self.polo_name = data_sheet_name.removeprefix(DATA_SHEET_PREFIX).strip()
 
     @classmethod
-    def detect(cls, sheet_names: Iterable[str]) -> "SabespPimentasTemplate | None":
+    def detect(cls, sheet_names: Iterable[str]) -> "PimentasTemplate | None":
         names = {name.strip() for name in sheet_names}
         if COVER_SHEET not in names:
             return None
@@ -206,7 +206,7 @@ class SabespPimentasTemplate:
                 )
             ],
             layout=go.Layout(
-                title="Índice de Qualidade SABESP por Serviço",
+                title="Índice de Qualidade por Serviço",
                 yaxis={"title": "Conforme (%)", "tickformat": ".0%", "range": [0, 1]},
                 xaxis={"title": "Serviço"},
                 template="plotly_white",

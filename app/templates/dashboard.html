@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Dashboard SABESP — Polo {{ polo_name }}</title>
+    <title>Dashboard — Polo {{ polo_name }}</title>
     <script src="https://cdn.plot.ly/plotly-basic-3.5.0.min.js" charset="utf-8"></script>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem; color: #1a1a1a; }
@@ -63,7 +63,7 @@
 <body>
     <header>
         <div class="topbar"><a href="/" class="home-link">← Página inicial / Novo dashboard</a></div>
-        <h1>Dashboard SABESP — Polo {{ polo_name }}</h1>
+        <h1>Dashboard — Polo {{ polo_name }}</h1>
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong>{% if is_filtered %} <em>(filtrado)</em>{% endif %}</div>{% endif %}
     </header>
 
@@ -110,7 +110,7 @@
             {% elif pct >= 60 %}{% set cls = "amber" %}
             {% else %}{% set cls = "red" %}{% endif %}
             <div class="kpi-value {{ cls }}">{{ "%.1f"|format(pct) }}%</div>
-            <div class="kpi-label">IQS — Índice de Qualidade SABESP</div>
+            <div class="kpi-label">IQS — Índice de Qualidade</div>
         </div>
         {% endif %}
         {% if total_fotos %}

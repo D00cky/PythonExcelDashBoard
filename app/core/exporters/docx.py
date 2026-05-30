@@ -5,10 +5,10 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 from openpyxl.workbook import Workbook
 
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate
 
 
-def render_docx(template: SabespPimentasTemplate, workbook: Workbook, path: Path) -> bytes:
+def render_docx(template: PimentasTemplate, workbook: Workbook, path: Path) -> bytes:
     inspections = template.extract_inspections(path)
     iqs_rows = template.extract_iqs_by_service(workbook)
     ic_rows = template.extract_ic_by_service(workbook)
@@ -16,7 +16,7 @@ def render_docx(template: SabespPimentasTemplate, workbook: Workbook, path: Path
     periodo = _periodo(inspections) or template.extract_periodo(workbook)
 
     doc = Document()
-    title = doc.add_heading(f"Dashboard SABESP — Polo {template.polo_name.title()}", level=0)
+    title = doc.add_heading(f"Dashboard — Polo {template.polo_name.title()}", level=0)
     for run in title.runs:
         run.font.color.rgb = RGBColor(0x26, 0x46, 0x53)
 
@@ -37,7 +37,7 @@ def render_docx(template: SabespPimentasTemplate, workbook: Workbook, path: Path
         )
 
     if iqs_rows:
-        doc.add_heading("Índice de Qualidade SABESP por Serviço", level=1)
+        doc.add_heading("Índice de Qualidade por Serviço", level=1)
         _table(
             doc,
             ["Serviço", "Avaliadas", "NC", "Conforme", "NC (%)", "Conforme (%)"],

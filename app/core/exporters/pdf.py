@@ -14,10 +14,10 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate
 
 
-def render_pdf(template: SabespPimentasTemplate, workbook: Workbook, path: Path) -> bytes:
+def render_pdf(template: PimentasTemplate, workbook: Workbook, path: Path) -> bytes:
     inspections = template.extract_inspections(path)
     iqs_rows = template.extract_iqs_by_service(workbook)
     ic_rows = template.extract_ic_by_service(workbook)
@@ -32,7 +32,7 @@ def render_pdf(template: SabespPimentasTemplate, workbook: Workbook, path: Path)
         rightMargin=1.5 * cm,
         topMargin=1.5 * cm,
         bottomMargin=1.5 * cm,
-        title=f"Dashboard SABESP — Polo {template.polo_name.title()}",
+        title=f"Dashboard — Polo {template.polo_name.title()}",
     )
 
     styles = getSampleStyleSheet()
@@ -51,7 +51,7 @@ def render_pdf(template: SabespPimentasTemplate, workbook: Workbook, path: Path)
     )
 
     story = []
-    story.append(Paragraph(f"Dashboard SABESP — Polo {template.polo_name.title()}", title_style))
+    story.append(Paragraph(f"Dashboard — Polo {template.polo_name.title()}", title_style))
     if periodo:
         story.append(Paragraph(f"<b>Período</b>: {periodo}", styles["Normal"]))
     if iqs_overall is not None:
@@ -76,7 +76,7 @@ def render_pdf(template: SabespPimentasTemplate, workbook: Workbook, path: Path)
         )
 
     if iqs_rows:
-        story.append(Paragraph("Índice de Qualidade SABESP por Serviço", h2_style))
+        story.append(Paragraph("Índice de Qualidade por Serviço", h2_style))
         story.append(
             _table(
                 ["Serviço", "Avaliadas", "NC", "Conforme", "NC (%)", "Conforme (%)"],

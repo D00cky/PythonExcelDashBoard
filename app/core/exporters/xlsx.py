@@ -5,13 +5,13 @@ from openpyxl import Workbook as NewWorkbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.workbook import Workbook
 
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate
 
 _HEADER_FILL = PatternFill("solid", fgColor="264653")
 _HEADER_FONT = Font(color="FFFFFF", bold=True)
 
 
-def render_xlsx(template: SabespPimentasTemplate, workbook: Workbook, path: Path) -> bytes:
+def render_xlsx(template: PimentasTemplate, workbook: Workbook, path: Path) -> bytes:
     inspections = template.extract_inspections(path)
     iqs_rows = template.extract_iqs_by_service(workbook)
     ic_rows = template.extract_ic_by_service(workbook)
@@ -78,7 +78,7 @@ def render_xlsx(template: SabespPimentasTemplate, workbook: Workbook, path: Path
 
 def _write_summary(ws, *, polo: str, periodo, iqs_overall, total_inspections, unique_teams):
     ws.title = "Resumo"
-    ws["A1"] = f"Dashboard SABESP — Polo {polo}"
+    ws["A1"] = f"Dashboard — Polo {polo}"
     ws["A1"].font = Font(size=16, bold=True, color="264653")
     rows = [
         ("Período", periodo or "—"),

@@ -18,8 +18,8 @@ from openpyxl import load_workbook
 
 from app.core.exporters import render_export
 from app.core.templates import recognize
-from app.core.templates.sabesp_pimentas import (
-    SabespPimentasTemplate,
+from app.core.templates.pimentas import (
+    PimentasTemplate,
     ServiceIC,
     ServiceIQS,
     top_observations,
@@ -54,7 +54,7 @@ def dashboard(upload_id: str) -> str:
     path = _upload_path(upload_id)
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
-    if not isinstance(template, SabespPimentasTemplate):
+    if not isinstance(template, PimentasTemplate):
         return render_template("dashboard_unknown.html", sheet_names=workbook.sheetnames)
 
     filter_start = _parse_iso_date(request.args.get("start", ""))
@@ -64,7 +64,7 @@ def dashboard(upload_id: str) -> str:
     return render_template(
         "dashboard.html",
         download_action=url_for("main.download", upload_id=upload_id),
-        **_cached_sabesp_context(
+        **_cached_polo_context(
             str(path),
             path.stat().st_mtime_ns,
             _iso(filter_start),
@@ -82,7 +82,7 @@ def team_detail(upload_id: str) -> str:
     path = _upload_path(upload_id)
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
-    if not isinstance(template, SabespPimentasTemplate):
+    if not isinstance(template, PimentasTemplate):
         abort(404)
     detail = template.extract_team_detail(path, team_name)
     if not detail:
@@ -108,7 +108,7 @@ def download(upload_id: str) -> Response:
     path = _upload_path(upload_id)
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
-    if not isinstance(template, SabespPimentasTemplate):
+    if not isinstance(template, PimentasTemplate):
         abort(404)
 
     body, mimetype = render_export(fmt, template, workbook, path)
@@ -146,8 +146,8 @@ def _parse_iso_date(value: str) -> pd.Timestamp | None:
 _SUSPICIOUS_SPAN_DAYS = 60
 
 
-def _build_sabesp_context(
-    template: SabespPimentasTemplate,
+def _build_polo_context(
+    template: PimentasTemplate,
     workbook,
     path: Path,
     filter_start: pd.Timestamp | None = None,
@@ -255,7 +255,7 @@ def _defer_plotly_script(chart_html: str) -> str:
 
 
 @lru_cache(maxsize=64)
-def _cached_sabesp_context(
+def _cached_polo_context(
     path_str: str,
     mtime_ns: int,  # noqa: ARG001 — cache key only; invalidates when the file changes
     filter_start_iso: str,
@@ -266,8 +266,8 @@ def _cached_sabesp_context(
     path = Path(path_str)
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
-    assert isinstance(template, SabespPimentasTemplate)  # route guards this
-    return _build_sabesp_context(
+    assert isinstance(template, PimentasTemplate)  # route guards this
+    return _build_polo_context(
         template,
         workbook,
         path,
@@ -326,7 +326,7 @@ def _date_span_warning(
 def _swap_day_month(df: pd.DataFrame) -> pd.DataFrame:
     """Flip day/month only when the swap moves a row into the target month.
 
-    SABESP reports occasionally store dates as MM/DD instead of DD/MM at
+    Polo reports occasionally store dates as MM/DD instead of DD/MM at
     data entry. Unambiguous rows (day > 12) reveal the file's actual
     target month; ambiguous rows (day ≤ 12) are swapped only when the
     swap puts them into that target month. This avoids breaking the
