@@ -136,57 +136,24 @@ class SabespPimentasTemplate:
             if df is None:
                 continue
             team_col = _ci_column(df, "EQUIPE")
-            tss_col = _ci_column(df, "Descrição TSS")
             if team_col is None:
                 continue
+            tss_col = _ci_column(df, "Descrição TSS")
             sub = df[df[team_col].astype(str).str.strip() == target]
             if sub.empty:
                 continue
 
             pairs = _stage_observation_pairs(sub, exclude={team_col, tss_col})
-            stage_cols = [s for s, _ in pairs]
-            stages = sub[stage_cols].astype(str).apply(lambda s: s.str.strip())
-            flat = stages.values.ravel()
-            counts = pd.Series(flat).value_counts()
-
-            nc_reasons: list[str] = []
-            sf_reasons: list[str] = []
-            for stage_col, obs_col in pairs:
-                if obs_col is None:
-                    continue
-                stage_norm = sub[stage_col].astype(str).str.strip()
-                nc_reasons.extend(
-                    sub.loc[stage_norm == "NC", obs_col].dropna().astype(str).tolist()
-                )
-                sf_reasons.extend(
-                    sub.loc[stage_norm == "SF", obs_col].dropna().astype(str).tolist()
-                )
-
-            top_nc = pd.Series(nc_reasons).value_counts().head(1) if nc_reasons else None
-            top_sf = pd.Series(sf_reasons).value_counts().head(1) if sf_reasons else None
-
-            tss_summary: list[tuple[str, int]] = []
-            if tss_col is not None:
-                tss_counts = sub[tss_col].dropna().astype(str).value_counts().head(10)
-                tss_summary = [(str(k), int(v)) for k, v in tss_counts.items()]
-
+            counts = _stage_code_counts(sub, [s for s, _ in pairs])
             result[service] = {
                 "inspecoes": int(len(sub)),
-                "conforme": int(counts.get("C", 0)),
-                "nao_conforme": int(counts.get("NC", 0)),
-                "sem_foto": int(counts.get("SF", 0)),
-                "nao_avaliado": int(counts.get("NA", 0)),
-                "top_nc_reason": (
-                    (str(top_nc.index[0]), int(top_nc.iloc[0]))
-                    if top_nc is not None and not top_nc.empty
-                    else None
-                ),
-                "top_sf_reason": (
-                    (str(top_sf.index[0]), int(top_sf.iloc[0]))
-                    if top_sf is not None and not top_sf.empty
-                    else None
-                ),
-                "tss_summary": tss_summary,
+                "conforme": counts.get("C", 0),
+                "nao_conforme": counts.get("NC", 0),
+                "sem_foto": counts.get("SF", 0),
+                "nao_avaliado": counts.get("NA", 0),
+                "top_nc_reason": _top_reason(_collect_reasons(sub, pairs, "NC")),
+                "top_sf_reason": _top_reason(_collect_reasons(sub, pairs, "SF")),
+                "tss_summary": _top_tss(sub, tss_col),
             }
         return result
 
@@ -200,54 +167,9 @@ class SabespPimentasTemplate:
         the count of 'NC'. start_date comes from 'Data Início Execução'
         (column L in the real file) and is coerced to datetime.
         """
-        cached = _inspections_cache_get(path)
-        if cached is not None:
-            return cached
-        parts: list[pd.DataFrame] = []
-        sheets = self._service_sheets(path)
-        for service in sorted(self.SERVICE_SHEETS):
-            df = sheets.get(service)
-            if df is None:
-                continue
-            team_col = _ci_column(df, "EQUIPE")
-            tss_col = _ci_column(df, "Descrição TSS")
-            if team_col is None or tss_col is None:
-                continue
-            df = df.dropna(subset=[team_col, tss_col]).copy()
-
-            stage_cols = _detect_stage_columns(df, exclude={team_col, tss_col})
-            if stage_cols:
-                stages = df[stage_cols].astype(str).apply(lambda s: s.str.strip())
-                df["conforme_count"] = (stages == "C").sum(axis=1)
-                df["nao_conforme_count"] = (stages == "NC").sum(axis=1)
-            else:
-                df["conforme_count"] = 0
-                df["nao_conforme_count"] = 0
-
-            date_col = _ci_column(df, "Data Início Execução")
-            df["start_date"] = (
-                pd.to_datetime(df[date_col], errors="coerce") if date_col is not None else pd.NaT
-            )
-
-            df = df.rename(columns={team_col: "team", tss_col: "tss"})
-            df = df[["team", "tss", "conforme_count", "nao_conforme_count", "start_date"]].copy()
-            df["service"] = service
-            parts.append(df)
-        if not parts:
-            result = pd.DataFrame(
-                columns=[
-                    "team",
-                    "tss",
-                    "service",
-                    "conforme_count",
-                    "nao_conforme_count",
-                    "start_date",
-                ]
-            )
-        else:
-            result = pd.concat(parts, ignore_index=True)
-        _inspections_cache_put(path, result)
-        return result
+        return _inspections_cached(
+            str(path), path.stat().st_mtime_ns, tuple(sorted(self.SERVICE_SHEETS))
+        )
 
     def _service_sheets(self, path: Path) -> dict[str, pd.DataFrame]:
         return _read_service_sheets_cached(
@@ -415,19 +337,50 @@ def _read_service_sheets_cached(
     return out
 
 
-_INSPECTIONS_CACHE: dict[tuple[str, int], pd.DataFrame] = {}
-_INSPECTIONS_CACHE_MAX = 8
+_INSPECTIONS_COLUMNS = (
+    "team",
+    "tss",
+    "service",
+    "conforme_count",
+    "nao_conforme_count",
+    "start_date",
+)
 
 
-def _inspections_cache_get(path: Path) -> pd.DataFrame | None:
-    return _INSPECTIONS_CACHE.get((str(path), path.stat().st_mtime_ns))
-
-
-def _inspections_cache_put(path: Path, df: pd.DataFrame) -> None:
-    key = (str(path), path.stat().st_mtime_ns)
-    if len(_INSPECTIONS_CACHE) >= _INSPECTIONS_CACHE_MAX:
-        _INSPECTIONS_CACHE.pop(next(iter(_INSPECTIONS_CACHE)))
-    _INSPECTIONS_CACHE[key] = df
+@lru_cache(maxsize=8)
+def _inspections_cached(
+    path_str: str, mtime_ns: int, services: tuple[str, ...]
+) -> pd.DataFrame:
+    sheets = _read_service_sheets_cached(path_str, mtime_ns, services)
+    parts: list[pd.DataFrame] = []
+    for service in services:
+        df = sheets.get(service)
+        if df is None:
+            continue
+        team_col = _ci_column(df, "EQUIPE")
+        tss_col = _ci_column(df, "Descrição TSS")
+        if team_col is None or tss_col is None:
+            continue
+        df = df.dropna(subset=[team_col, tss_col]).copy()
+        stage_cols = _detect_stage_columns(df, exclude={team_col, tss_col})
+        if stage_cols:
+            stages = df[stage_cols].astype(str).apply(lambda s: s.str.strip())
+            df["conforme_count"] = (stages == "C").sum(axis=1)
+            df["nao_conforme_count"] = (stages == "NC").sum(axis=1)
+        else:
+            df["conforme_count"] = 0
+            df["nao_conforme_count"] = 0
+        date_col = _ci_column(df, "Data Início Execução")
+        df["start_date"] = (
+            pd.to_datetime(df[date_col], errors="coerce") if date_col is not None else pd.NaT
+        )
+        df = df.rename(columns={team_col: "team", tss_col: "tss"})
+        df = df[["team", "tss", "conforme_count", "nao_conforme_count", "start_date"]].copy()
+        df["service"] = service
+        parts.append(df)
+    if not parts:
+        return pd.DataFrame(columns=list(_INSPECTIONS_COLUMNS))
+    return pd.concat(parts, ignore_index=True)
 
 
 _SERVICE_COLORS = {
@@ -515,6 +468,41 @@ def _conformity_chart(
             legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
         ),
     )
+
+
+def _stage_code_counts(sub: pd.DataFrame, stage_cols: list[str]) -> dict[str, int]:
+    """Total occurrences of each stage code (C/NC/SF/NA) across stage columns."""
+    if not stage_cols:
+        return {}
+    flat = sub[stage_cols].astype(str).apply(lambda s: s.str.strip()).values.ravel()
+    return {str(k): int(v) for k, v in pd.Series(flat).value_counts().items()}
+
+
+def _collect_reasons(
+    sub: pd.DataFrame, pairs: list[tuple[str, str | None]], code: str
+) -> list[str]:
+    """Observation strings paired with rows where the stage cell equals ``code``."""
+    out: list[str] = []
+    for stage_col, obs_col in pairs:
+        if obs_col is None:
+            continue
+        stage_norm = sub[stage_col].astype(str).str.strip()
+        out.extend(sub.loc[stage_norm == code, obs_col].dropna().astype(str).tolist())
+    return out
+
+
+def _top_reason(reasons: list[str]) -> tuple[str, int] | None:
+    if not reasons:
+        return None
+    top = pd.Series(reasons).value_counts().head(1)
+    return (str(top.index[0]), int(top.iloc[0]))
+
+
+def _top_tss(sub: pd.DataFrame, tss_col: str | None, n: int = 10) -> list[tuple[str, int]]:
+    if tss_col is None:
+        return []
+    counts = sub[tss_col].dropna().astype(str).value_counts().head(n)
+    return [(str(k), int(v)) for k, v in counts.items()]
 
 
 def _stage_observation_pairs(df: pd.DataFrame, exclude: set) -> list[tuple[str, str | None]]:

@@ -166,3 +166,38 @@ def test_download_returns_400_for_unsupported_format(client, tmp_path):
     response = client.get(f"/download/{upload_id}?fmt=txt")
 
     assert response.status_code == 400
+
+
+def test_team_detail_renders_breakdown_for_known_team(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(
+        f"/dashboard/{upload_id}/team?name=JOSIAS+ALMEIDA+FRANCISCO"
+    )
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "JOSIAS ALMEIDA FRANCISCO" in body
+    assert "Polo Pimentas" in body
+
+
+def test_team_detail_returns_400_when_name_param_missing(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/dashboard/{upload_id}/team")
+
+    assert response.status_code == 400
+
+
+def test_team_detail_returns_404_for_unknown_upload_id(client):
+    response = client.get("/dashboard/" + "0" * 32 + "/team?name=X")
+
+    assert response.status_code == 404
+
+
+def test_team_detail_returns_404_when_team_absent_from_sheets(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/dashboard/{upload_id}/team?name=NOBODY")
+
+    assert response.status_code == 404
