@@ -350,6 +350,10 @@ _INSPECTIONS_COLUMNS = (
     "service",
     "conforme_count",
     "nao_conforme_count",
+    "photo_conforme",
+    "photo_nc",
+    "photo_sf",
+    "photo_total",
     "start_date",
 )
 
@@ -375,15 +379,37 @@ def _inspections_cached(
             is_failing = stages.isin(_FAILING_STAGE_CODES).any(axis=1)
             df["conforme_count"] = (~is_failing).astype(int)
             df["nao_conforme_count"] = is_failing.astype(int)
+            df["photo_conforme"] = (stages == "C").sum(axis=1).astype(int)
+            df["photo_nc"] = (stages == "NC").sum(axis=1).astype(int)
+            df["photo_sf"] = (stages == "SF").sum(axis=1).astype(int)
+            df["photo_total"] = (
+                df["photo_conforme"] + df["photo_nc"] + df["photo_sf"]
+            )
         else:
             df["conforme_count"] = 0
             df["nao_conforme_count"] = 0
+            df["photo_conforme"] = 0
+            df["photo_nc"] = 0
+            df["photo_sf"] = 0
+            df["photo_total"] = 0
         date_col = _ci_column(df, "Data Início Execução")
         df["start_date"] = (
             pd.to_datetime(df[date_col], errors="coerce") if date_col is not None else pd.NaT
         )
         df = df.rename(columns={team_col: "team", tss_col: "tss"})
-        df = df[["team", "tss", "conforme_count", "nao_conforme_count", "start_date"]].copy()
+        df = df[
+            [
+                "team",
+                "tss",
+                "conforme_count",
+                "nao_conforme_count",
+                "photo_conforme",
+                "photo_nc",
+                "photo_sf",
+                "photo_total",
+                "start_date",
+            ]
+        ].copy()
         df["service"] = service
         parts.append(df)
     if not parts:

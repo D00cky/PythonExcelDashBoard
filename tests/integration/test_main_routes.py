@@ -273,3 +273,81 @@ def test_dashboard_ignores_invalid_date_params(client, tmp_path):
     assert response.status_code == 200
     body = response.data.decode("utf-8")
     assert "(filtrado)" not in body
+
+
+def _upload_swapped_dates_xlsx(client, tmp_path) -> str:
+    """Build a 'Maio 2026' file where most ÁGUA rows are stored as Jan 5."""
+    from datetime import datetime
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    wb.active.title = "CAPA"
+    wb.create_sheet("DADOS - PIMENTAS")
+    ws = wb.create_sheet("ÁGUA")
+    wb.create_sheet("ESGOTO")
+    ws["A1"] = "Descrição TSS"
+    ws["B1"] = "Data Início Execução"
+    ws["C1"] = "EQUIPE"
+    ws["D1"] = "FACHADA"
+    # Three swap-needed rows (stored as month=1, day=5 instead of month=5, day=1)
+    # plus one unambiguous May row (day > 12) that pins the target month.
+    rows = [
+        ("T1", datetime(2026, 1, 5), "ALICE", "C"),
+        ("T1", datetime(2026, 1, 5), "ALICE", "NC"),
+        ("T1", datetime(2026, 1, 5), "BOB", "C"),
+        ("T1", datetime(2026, 5, 25), "BOB", "C"),
+    ]
+    for i, (tss, date, team, fa) in enumerate(rows, start=2):
+        ws[f"A{i}"], ws[f"B{i}"], ws[f"C{i}"], ws[f"D{i}"] = tss, date, team, fa
+    path = tmp_path / "swapped.xlsx"
+    wb.save(path)
+
+    upload = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(path.read_bytes()), "swapped.xlsx")},
+        content_type="multipart/form-data",
+    )
+    return upload.location.removeprefix("/dashboard/")
+
+
+def test_dashboard_swap_param_corrects_inverted_day_month(client, tmp_path):
+    upload_id = _upload_swapped_dates_xlsx(client, tmp_path)
+
+    response = client.get(f"/dashboard/{upload_id}?swap=1")
+
+    body = response.data.decode("utf-8")
+    assert response.status_code == 200
+    # Three rows stored as 2026-01-05 should swap to 2026-05-01 (target = May).
+    # The unambiguous 2026-05-25 stays. Period: 01/05/2026 à 25/05/2026.
+    assert "01/05/2026 à 25/05/2026" in body
+    assert "dia/mês corrigido" in body
+    assert "recalculados" in body
+
+
+def test_dashboard_swap_does_not_break_already_correct_files(client, tmp_path):
+    # Minimal fixture has dates already in March 2026 with day > 12 mixed in —
+    # swap should be a no-op for the in-range rows.
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/dashboard/{upload_id}?swap=1")
+
+    body = response.data.decode("utf-8")
+    assert response.status_code == 200
+    # Fixture target month is March (day=29 unambiguous). Swap candidates would
+    # only flip rows where day == 3 → there are none in the fixture, so the
+    # period is identical to the unswapped case.
+    assert "05/03/2026 à 29/03/2026" in body
+
+
+def test_dashboard_recomputes_kpis_when_filter_active(client, tmp_path):
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(
+        f"/dashboard/{upload_id}?start=2026-03-15&end=2026-03-29"
+    )
+
+    body = response.data.decode("utf-8")
+    assert response.status_code == 200
+    # The "recalculados" note appears only when filter or swap is active.
+    assert "recalculados" in body

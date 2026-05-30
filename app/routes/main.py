@@ -17,7 +17,11 @@ from openpyxl import load_workbook
 
 from app.core.exporters import render_export
 from app.core.templates import recognize
-from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
+from app.core.templates.sabesp_pimentas import (
+    SabespPimentasTemplate,
+    ServiceIC,
+    ServiceIQS,
+)
 
 bp = Blueprint("main", __name__)
 
@@ -53,6 +57,7 @@ def dashboard(upload_id: str) -> str:
 
     filter_start = _parse_iso_date(request.args.get("start", ""))
     filter_end = _parse_iso_date(request.args.get("end", ""))
+    swap_dates = request.args.get("swap") == "1"
 
     return render_template(
         "dashboard.html",
@@ -64,6 +69,7 @@ def dashboard(upload_id: str) -> str:
             plotly_mode="cdn",
             filter_start=filter_start,
             filter_end=filter_end,
+            swap_dates=swap_dates,
         ),
     )
 
@@ -147,14 +153,27 @@ def _build_sabesp_context(
     plotly_mode: Literal["cdn", "inline"],
     filter_start: pd.Timestamp | None = None,
     filter_end: pd.Timestamp | None = None,
+    swap_dates: bool = False,
 ) -> dict[str, Any]:
-    iqs_rows = template.extract_iqs_by_service(workbook)
     full_inspections = template.extract_inspections(path)
+    if swap_dates:
+        full_inspections = _swap_day_month(full_inspections)
 
     available_start, available_end = _date_bounds(full_inspections)
-    span_warning = _date_span_warning(available_start, available_end)
+    span_warning = _date_span_warning(available_start, available_end, swapped=swap_dates)
     inspections = _apply_date_filter(full_inspections, filter_start, filter_end)
     is_filtered = filter_start is not None or filter_end is not None
+    recomputed = is_filtered or swap_dates
+
+    if recomputed:
+        services = sorted(template.SERVICE_SHEETS)
+        iqs_rows = _iqs_rows_from_inspections(inspections, services)
+        ic_rows = _ic_rows_from_inspections(inspections, services)
+        iqs_overall = _iqs_overall_from_inspections(inspections)
+    else:
+        iqs_rows = template.extract_iqs_by_service(workbook)
+        ic_rows = template.extract_ic_by_service(workbook)
+        iqs_overall = template.extract_iqs_overall(workbook)
 
     periodo = _periodo_from_inspections(inspections) or template.extract_periodo(workbook)
     teams_sorted = (
@@ -178,10 +197,10 @@ def _build_sabesp_context(
     return {
         "polo_name": template.polo_name.title(),
         "periodo": periodo,
-        "iqs_overall": template.extract_iqs_overall(workbook),
+        "iqs_overall": iqs_overall,
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
-        "fig_ic_bar": template.build_ic_bar(template.extract_ic_by_service(workbook)).to_html(
+        "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
             include_plotlyjs=plotly_mode, full_html=False, div_id="ic-bar"
         ),
         "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
@@ -203,6 +222,8 @@ def _build_sabesp_context(
         "available_start": _iso(available_start),
         "available_end": _iso(available_end),
         "is_filtered": is_filtered,
+        "swap_dates": swap_dates,
+        "recomputed": recomputed,
         "span_warning": span_warning,
     }
 
@@ -233,19 +254,114 @@ def _apply_date_filter(
 
 
 def _date_span_warning(
-    start: pd.Timestamp | None, end: pd.Timestamp | None
+    start: pd.Timestamp | None, end: pd.Timestamp | None, swapped: bool = False
 ) -> str | None:
     if start is None or end is None:
         return None
     span_days = (end - start).days
     if span_days <= _SUSPICIOUS_SPAN_DAYS:
         return None
+    if swapped:
+        return (
+            f"Datas com dia/mês invertidos: {span_days} dias "
+            f"({start:%d/%m/%Y} → {end:%d/%m/%Y}). O resultado ainda parece "
+            "incorreto; verifique a planilha original."
+        )
     return (
         f"Atenção: as datas das inspeções abrangem {span_days} dias "
         f"({start:%d/%m/%Y} → {end:%d/%m/%Y}). Isso pode indicar dia/mês "
-        "trocados na planilha original. Use o filtro abaixo para focar "
-        "no período correto."
+        "trocados na planilha original."
     )
+
+
+def _swap_day_month(df: pd.DataFrame) -> pd.DataFrame:
+    """Flip day/month only when the swap moves a row into the target month.
+
+    SABESP reports occasionally store dates as MM/DD instead of DD/MM at
+    data entry. Unambiguous rows (day > 12) reveal the file's actual
+    target month; ambiguous rows (day ≤ 12) are swapped only when the
+    swap puts them into that target month. This avoids breaking the
+    correctly-entered dates that happen to have day ≤ 12.
+    """
+    if df.empty or "start_date" not in df.columns:
+        return df
+    dates = df["start_date"]
+    unambiguous = dates.notna() & (dates.dt.day > 12)
+    if not unambiguous.any():
+        return df  # nothing tells us which month is "right"
+    target_month = int(dates[unambiguous].dt.month.mode().iloc[0])
+
+    df = df.copy()
+    ambiguous = dates.notna() & (dates.dt.day <= 12)
+    # Swap only when swap-day-to-month would yield the target month.
+    swap_mask = ambiguous & (dates.dt.day == target_month) & (dates.dt.month != target_month)
+    if not swap_mask.any():
+        return df
+    sub = dates[swap_mask]
+    df.loc[swap_mask, "start_date"] = pd.to_datetime(
+        {
+            "year": sub.dt.year,
+            "month": sub.dt.day,
+            "day": sub.dt.month,
+            "hour": sub.dt.hour,
+            "minute": sub.dt.minute,
+        }
+    ).values
+    return df
+
+
+def _iqs_rows_from_inspections(df: pd.DataFrame, services: list[str]) -> list[ServiceIQS]:
+    """Reconstruct ServiceIQS records from raw inspection cells.
+
+    Photos are summed across stage cells per service. ``fotos_nc`` lumps
+    NC + SF together to match how the CAPA-aggregated row treats failures.
+    """
+    out: list[ServiceIQS] = []
+    if df.empty:
+        return out
+    for svc in services:
+        sub = df[df["service"] == svc]
+        if sub.empty:
+            continue
+        avaliadas = int(sub["photo_total"].sum())
+        if avaliadas == 0:
+            continue
+        nc = int((sub["photo_nc"] + sub["photo_sf"]).sum())
+        conforme = int(sub["photo_conforme"].sum())
+        out.append(
+            ServiceIQS(
+                name=svc.title(),
+                fotos_avaliadas=avaliadas,
+                fotos_nc=nc,
+                fotos_conforme=conforme,
+                nc_pct=nc / avaliadas,
+                conforme_pct=conforme / avaliadas,
+            )
+        )
+    return out
+
+
+def _ic_rows_from_inspections(df: pd.DataFrame, services: list[str]) -> list[ServiceIC]:
+    out: list[ServiceIC] = []
+    if df.empty:
+        return out
+    for svc in services:
+        sub = df[df["service"] == svc]
+        total = len(sub)
+        if total == 0:
+            continue
+        conf = int(sub["conforme_count"].sum())
+        out.append(ServiceIC(name=svc.title(), ic_pct=conf / total, lvs=total))
+    return out
+
+
+def _iqs_overall_from_inspections(df: pd.DataFrame) -> float | None:
+    if df.empty:
+        return None
+    total = int(df["photo_total"].sum())
+    if total == 0:
+        return None
+    return int(df["photo_conforme"].sum()) / total
 
 
 def _iso(ts: pd.Timestamp | None) -> str:

@@ -38,7 +38,11 @@
         .filter-bar a.reset:hover { text-decoration: underline; }
         .filter-bar .hint { font-size: 0.82rem; color: #666; margin-left: auto; align-self: center; }
         .filter-bar .hint strong { color: #2a9d8f; }
-        .warning-banner { background: #fff3d6; border-left: 5px solid #e9c46a; color: #6c4f00; padding: 0.9rem 1.1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.93rem; line-height: 1.45; }
+        .warning-banner { background: #fff3d6; border-left: 5px solid #e9c46a; color: #6c4f00; padding: 0.9rem 1.1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.93rem; line-height: 1.45; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+        .warning-banner .swap-action { background: #6c4f00; color: white; padding: 0.4rem 0.85rem; border-radius: 6px; text-decoration: none; font-size: 0.86rem; font-weight: 600; white-space: nowrap; margin-left: auto; }
+        .warning-banner .swap-action:hover { background: #4d3700; }
+        .badge-swap { background: #2a9d8f; color: white; padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.76rem; margin-left: 0.4rem; }
+        .recomputed-note { font-size: 0.82rem; color: #666; padding: 0.4rem 0.75rem; background: #f1f5f4; border-radius: 4px; margin: 0.5rem 0 1rem; display: inline-block; }
     </style>
 </head>
 <body>
@@ -49,11 +53,19 @@
     </header>
 
     {% if span_warning %}
-    <div class="warning-banner">⚠ {{ span_warning }}</div>
+    <div class="warning-banner">
+        ⚠ {{ span_warning }}
+        {% if not swap_dates %}
+        <a class="swap-action" href="?swap=1{% if filter_start %}&start={{ filter_start }}{% endif %}{% if filter_end %}&end={{ filter_end }}{% endif %}">Corrigir dia/mês →</a>
+        {% else %}
+        <a class="swap-action" href="?{% if filter_start %}start={{ filter_start }}&{% endif %}{% if filter_end %}end={{ filter_end }}{% endif %}">Desfazer correção</a>
+        {% endif %}
+    </div>
     {% endif %}
 
     {% if available_start and available_end %}
     <form class="filter-bar" method="get" action="">
+        {% if swap_dates %}<input type="hidden" name="swap" value="1">{% endif %}
         <div>
             <label for="start">De</label>
             <input type="date" id="start" name="start" value="{{ filter_start }}" min="{{ available_start }}" max="{{ available_end }}">
@@ -63,9 +75,16 @@
             <input type="date" id="end" name="end" value="{{ filter_end }}" min="{{ available_start }}" max="{{ available_end }}">
         </div>
         <button type="submit">Filtrar período</button>
-        {% if is_filtered %}<a class="reset" href="?">Limpar</a>{% endif %}
-        <div class="hint">Dados disponíveis: <strong>{{ available_start }}</strong> a <strong>{{ available_end }}</strong></div>
+        {% if is_filtered %}<a class="reset" href="?{% if swap_dates %}swap=1{% endif %}">Limpar</a>{% endif %}
+        <div class="hint">
+            Dados disponíveis: <strong>{{ available_start }}</strong> a <strong>{{ available_end }}</strong>
+            {% if swap_dates %}<span class="badge-swap">dia/mês corrigido</span>{% endif %}
+        </div>
     </form>
+    {% endif %}
+
+    {% if recomputed %}
+    <div class="recomputed-note">KPIs e gráficos recalculados a partir das inspeções no período {% if is_filtered %}filtrado{% else %}corrigido{% endif %}.</div>
     {% endif %}
 
     <div class="kpi-row">
