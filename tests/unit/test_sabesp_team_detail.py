@@ -126,23 +126,39 @@ def test_extract_team_detail_failing_inspections_lists_each_bad_os(tmp_path):
             ("ALICE", "VAZAMENTO", "C", None),
             ("ALICE", "TROCAR RAMAL", "SF", "sem foto da fachada"),
         ],
+        os_numbers=[1001, 1002, 1003],
     )
 
     detail = SabespPimentasTemplate().extract_team_detail(path, "ALICE")
     failing = detail["ÁGUA"]["failing_inspections"]
 
     assert [f["tss"] for f in failing] == ["TROCAR RAMAL", "TROCAR RAMAL"]
+    assert [f["os"] for f in failing] == ["1001", "1003"]
     codes = [s["code"] for f in failing for s in f["failed_stages"]]
     assert codes == ["NC", "SF"]
     observations = [s["observation"] for f in failing for s in f["failed_stages"]]
     assert observations == ["telhado quebrado", "sem foto da fachada"]
 
 
+def test_failing_inspections_os_field_blank_when_column_missing(tmp_path):
+    path = _write_observations_xlsx(
+        tmp_path,
+        [
+            ("ALICE", "T1", "NC", "x"),
+        ],
+    )
+
+    failing = SabespPimentasTemplate().extract_team_detail(path, "ALICE")["ÁGUA"][
+        "failing_inspections"
+    ]
+    assert failing[0]["os"] == ""
+
+
 def test_failing_inspections_returns_empty_when_no_stages():
     assert _failing_inspections(pd.DataFrame(), [], None) == []
 
 
-def _write_observations_xlsx(tmp_path, rows):
+def _write_observations_xlsx(tmp_path, rows, os_numbers=None):
     wb = Workbook()
     wb.active.title = "CAPA"
     wb.create_sheet("DADOS - PIMENTAS")
@@ -151,11 +167,15 @@ def _write_observations_xlsx(tmp_path, rows):
     ws["B1"] = "Descrição TSS"
     ws["C1"] = "FACHADA"
     ws["D1"] = "Observação FACHADA"
+    if os_numbers is not None:
+        ws["E1"] = "Número OS"
     for i, (team, tss, stage, observation) in enumerate(rows, start=2):
         ws[f"A{i}"] = team
         ws[f"B{i}"] = tss
         ws[f"C{i}"] = stage
         ws[f"D{i}"] = observation
+        if os_numbers is not None:
+            ws[f"E{i}"] = os_numbers[i - 2]
     path = tmp_path / "team_obs.xlsx"
     wb.save(path)
     return path

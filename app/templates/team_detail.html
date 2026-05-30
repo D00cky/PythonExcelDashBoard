@@ -25,6 +25,7 @@
         .failing-list h3 { font-size: 0.95rem; color: #b14732; margin: 0 0 0.5rem; text-transform: uppercase; letter-spacing: 0.04em; }
         .failing-row { padding: 0.65rem 0.8rem; border-radius: 6px; background: #fdf3ef; margin-bottom: 0.5rem; font-size: 0.9rem; }
         .failing-row .tss { font-weight: 600; color: #264653; margin-bottom: 0.25rem; }
+        .failing-row .os { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.78rem; color: #b14732; background: #fff; padding: 0.1rem 0.4rem; border-radius: 4px; margin-right: 0.4rem; border: 1px solid #f0d4c8; }
         .failing-row .stage { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; background: #e76f51; color: white; font-size: 0.78rem; font-weight: 600; margin-right: 0.4rem; }
         .failing-row .stage.sf { background: #e9c46a; color: #6c4f00; }
         .failing-row .obs { color: #555; font-style: italic; margin-top: 0.2rem; display: block; }
@@ -106,7 +107,10 @@
                 <h3>Inspeções não conformes ({{ info.failing_inspections|length }})</h3>
                 {% for fi in info.failing_inspections %}
                 <div class="failing-row">
-                    <div class="tss">{{ fi.tss or "—" }}</div>
+                    <div class="tss">
+                        {% if fi.os %}<span class="os">OS {{ fi.os }}</span>{% endif %}
+                        {{ fi.tss or "—" }}
+                    </div>
                     <div>
                         {% for s in fi.failed_stages %}
                         <span class="stage {% if s.code == 'SF' %}sf{% endif %}">{{ s.stage }} · {{ s.code }}</span>

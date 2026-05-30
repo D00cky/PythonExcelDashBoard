@@ -150,13 +150,14 @@ class SabespPimentasTemplate:
                 continue
 
             pairs = _stage_observation_pairs(sub, exclude={team_col, tss_col})
+            os_col = _ci_column(df, "Número OS")
             result[service] = {
                 "inspecoes": int(len(sub)),
                 **_os_conformity_summary(sub, [s for s, _ in pairs]),
                 "top_nc_reason": _top_reason(_collect_reasons(sub, pairs, "NC")),
                 "top_sf_reason": _top_reason(_collect_reasons(sub, pairs, "SF")),
                 "tss_summary": _top_tss(sub, tss_col),
-                "failing_inspections": _failing_inspections(sub, pairs, tss_col),
+                "failing_inspections": _failing_inspections(sub, pairs, tss_col, os_col),
             }
         return result
 
@@ -501,6 +502,7 @@ def _failing_inspections(
     sub: pd.DataFrame,
     pairs: list[tuple[str, str | None]],
     tss_col: str | None,
+    os_col: str | None = None,
 ) -> list[dict]:
     """Rows where at least one stage is NC or SF, with per-stage detail."""
     if not pairs:
@@ -525,8 +527,17 @@ def _failing_inspections(
             if tss_col is not None and pd.notna(row[tss_col])
             else ""
         )
-        out.append({"tss": tss, "failed_stages": failed})
+        out.append({"os": _format_os(row, os_col), "tss": tss, "failed_stages": failed})
     return out
+
+
+def _format_os(row: pd.Series, os_col: str | None) -> str:
+    if os_col is None or pd.isna(row[os_col]):
+        return ""
+    raw = row[os_col]
+    if isinstance(raw, float) and raw.is_integer():
+        return str(int(raw))
+    return str(raw).strip()
 
 
 def _stage_code_counts(sub: pd.DataFrame, stage_cols: list[str]) -> dict[str, int]:
