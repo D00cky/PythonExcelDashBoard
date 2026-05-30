@@ -14,6 +14,7 @@ from flask import (
 )
 from openpyxl import load_workbook
 
+from app.core.exporters import render_export
 from app.core.templates import recognize
 from app.core.templates.sabesp_pimentas import SabespPimentasTemplate
 
@@ -92,8 +93,6 @@ def download(upload_id: str) -> Response:
     template = recognize(workbook.sheetnames)
     if not isinstance(template, SabespPimentasTemplate):
         abort(404)
-
-    from app.core.exporters import render_export
 
     body, mimetype = render_export(fmt, template, workbook, path)
     response = Response(body, mimetype=mimetype)
