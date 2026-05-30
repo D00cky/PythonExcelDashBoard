@@ -1,6 +1,6 @@
 import uuid
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 from flask import (
@@ -67,7 +67,6 @@ def dashboard(upload_id: str) -> str:
             template,
             workbook,
             path,
-            plotly_mode="cdn",
             filter_start=filter_start,
             filter_end=filter_end,
             swap_dates=swap_dates,
@@ -151,7 +150,6 @@ def _build_sabesp_context(
     template: SabespPimentasTemplate,
     workbook,
     path: Path,
-    plotly_mode: Literal["cdn", "inline"],
     filter_start: pd.Timestamp | None = None,
     filter_end: pd.Timestamp | None = None,
     swap_dates: bool = False,
@@ -205,7 +203,7 @@ def _build_sabesp_context(
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
         "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
-            include_plotlyjs=plotly_mode, full_html=False, div_id="ic-bar"
+            include_plotlyjs=False, full_html=False, div_id="ic-bar"
         ),
         "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
             include_plotlyjs=False, full_html=False, div_id="iqs-bar"
