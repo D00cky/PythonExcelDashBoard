@@ -44,8 +44,7 @@
         .badge-swap { background: #2a9d8f; color: white; padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.76rem; margin-left: 0.4rem; }
         .recomputed-note { font-size: 0.82rem; color: #666; padding: 0.4rem 0.75rem; background: #f1f5f4; border-radius: 4px; margin: 0.5rem 0 1rem; display: inline-block; }
         .nc-focus { margin-top: 3rem; padding-top: 1.5rem; border-top: 3px solid #e76f51; }
-        .nc-focus h2 { color: #b14732; margin: 0 0 0.4rem; font-size: 1.6rem; }
-        .nc-intro { color: #555; font-size: 0.93rem; margin: 0 0 1.5rem; line-height: 1.5; }
+        .nc-focus h2 { color: #b14732; margin: 0 0 1.5rem; font-size: 1.6rem; }
         .reasons-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.5rem; }
         @media (min-width: 1000px) { .reasons-grid { grid-template-columns: 1fr 1fr; } }
         .reasons-col h3 { font-size: 1rem; color: #264653; margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 0.4rem; }
@@ -159,8 +158,7 @@
     <div class="chart">{{ fig_tss | safe }}</div>
 
     <section class="nc-focus">
-        <h2>Foco em Não Conformes</h2>
-        <p class="nc-intro">Use estas visões para apontar especificamente o que cada equipe precisa corrigir: etapa que mais falha, equipes com maior taxa de erro, e as observações mais recorrentes nos campos NC e SF.</p>
+        <h2>Não Conformes</h2>
 
         <div class="chart-grid">
             <div class="chart">{{ fig_failing_stages | safe }}</div>
