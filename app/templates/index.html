@@ -101,10 +101,10 @@
         <form method="post" action="/upload" enctype="multipart/form-data" id="upload-form">
             <label class="file-drop" for="file" id="file-drop">
                 <div class="file-icon">📊</div>
-                <div class="file-prompt" id="file-prompt">Clique para selecionar a planilha</div>
-                <div class="file-hint">Apenas arquivos .xlsx (Excel)</div>
+                <div class="file-prompt" id="file-prompt">Clique para selecionar uma ou mais planilhas</div>
+                <div class="file-hint">Arquivos .xlsx — selecione vários para gerar relatório semanal/mensal</div>
                 <div class="file-name" id="file-name" style="display: none;"></div>
-                <input id="file" type="file" name="file" accept=".xlsx" required>
+                <input id="file" type="file" name="file" accept=".xlsx" multiple required>
             </label>
             <button type="submit">⚡ Gerar Dashboard Interativo</button>
         </form>

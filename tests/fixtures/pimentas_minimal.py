@@ -46,24 +46,33 @@ _INSPECTION_ROWS = {
 
 
 def make_minimal_pimentas(
-    tmp_path: Path, *, with_periodo: bool = True, with_inspections: bool = False
+    tmp_path: Path,
+    *,
+    with_periodo: bool = True,
+    with_inspections: bool = False,
+    polo: str = "PIMENTAS",
+    periodo: str = "Período: 01/03/2026 à 31/03/2026",
+    file_name: str | None = None,
 ) -> Path:
     """Build a minimal polo-shape xlsx covering the cells we extract.
 
-    Layout mirrors the real ``DADOS - PIMENTAS`` sheet:
+    Layout mirrors the real ``DADOS - <POLO>`` sheet:
       B4   period string
       B26-G29 per-service IQS rows (Água / Esgoto / Cavalete / Reposição)
       G30  overall IQS conforme %
 
     ``with_periodo=False`` leaves B4 empty so tests can exercise None handling.
+    ``polo`` controls the data-sheet suffix (``DADOS - <polo>``).
+    ``file_name`` overrides the saved filename (defaults to ``<polo>.xlsx``).
     """
     wb = Workbook()
     wb.active.title = "CAPA"
 
-    wb.create_sheet("DADOS - PIMENTAS")
-    dados = wb["DADOS - PIMENTAS"]
+    data_sheet_name = f"DADOS - {polo}"
+    wb.create_sheet(data_sheet_name)
+    dados = wb[data_sheet_name]
     if with_periodo:
-        dados["B4"] = "Período: 01/03/2026 à 31/03/2026"
+        dados["B4"] = periodo
 
     dados["B10"] = "Tipo de Serviço"
     dados["C10"] = "IC (%)"
@@ -116,7 +125,7 @@ def make_minimal_pimentas(
                 ws[f"O{i}"] = fachada
                 ws[f"Q{i}"] = sinalizacao
 
-    path = tmp_path / "pimentas.xlsx"
+    path = tmp_path / (file_name or f"{polo.lower()}.xlsx")
     wb.save(path)
     return path
 

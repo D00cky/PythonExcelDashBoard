@@ -16,6 +16,7 @@ from flask import (
 )
 from openpyxl import load_workbook
 
+from app.core.aggregator import discover_polo_file, write_manifest
 from app.core.exporters import render_export
 from app.core.templates import recognize
 from app.core.templates.pimentas import (
@@ -35,17 +36,36 @@ def index() -> str:
 
 @bp.post("/upload")
 def upload():
-    if "file" not in request.files:
+    files = request.files.getlist("file")
+    files = [f for f in files if f and f.filename]
+    if not files:
         abort(400)
-    file = request.files["file"]
-    if not file.filename or not file.filename.lower().endswith(".xlsx"):
+    if not all(f.filename.lower().endswith(".xlsx") for f in files):
         abort(400)
 
     upload_id = uuid.uuid4().hex
     uploads_dir = Path(current_app.instance_path) / "uploads"
     uploads_dir.mkdir(parents=True, exist_ok=True)
-    file.save(uploads_dir / f"{upload_id}.xlsx")
 
+    if len(files) == 1:
+        # Legacy single-file layout: keep top-level path so existing /dashboard/<id>
+        # links and tests continue to work without migration.
+        files[0].save(uploads_dir / f"{upload_id}.xlsx")
+        return redirect(url_for("main.dashboard", upload_id=upload_id), code=303)
+
+    batch_dir = uploads_dir / upload_id
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    polo_files = []
+    for idx, f in enumerate(files):
+        target = batch_dir / f"file_{idx:02d}.xlsx"
+        f.save(target)
+        try:
+            polo_files.append(discover_polo_file(target))
+        except ValueError as exc:
+            current_app.logger.warning("skipping unrecognized upload %s: %s", f.filename, exc)
+    if not polo_files:
+        abort(400)
+    write_manifest(batch_dir, polo_files)
     return redirect(url_for("main.dashboard", upload_id=upload_id), code=303)
 
 

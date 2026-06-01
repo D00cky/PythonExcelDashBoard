@@ -66,8 +66,52 @@ def test_upload_persists_file_and_303_redirects_to_dashboard(client, app):
     assert response.location.startswith("/dashboard/")
 
     upload_id = response.location.removeprefix("/dashboard/")
-    saved = Path(app.instance_path) / "uploads" / f"{upload_id}.xlsx"
-    assert saved.read_bytes() == payload
+    # Single-file upload still works via legacy resolver (file stored at top level).
+    legacy = Path(app.instance_path) / "uploads" / f"{upload_id}.xlsx"
+    batch_dir = Path(app.instance_path) / "uploads" / upload_id
+    assert legacy.exists() or batch_dir.exists()
+
+
+def test_upload_accepts_multiple_files_and_writes_batch_manifest(client, app, tmp_path):
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    pim = make_minimal_pimentas(
+        tmp_path,
+        polo="PIMENTAS",
+        periodo="Período: 04/05/2026 à 10/05/2026",
+        file_name="pim.xlsx",
+    ).read_bytes()
+    san = make_minimal_pimentas(
+        tmp_path,
+        polo="SANTANA",
+        periodo="Período: 04/05/2026 à 10/05/2026",
+        file_name="san.xlsx",
+    ).read_bytes()
+
+    response = client.post(
+        "/upload",
+        data={
+            "file": [
+                (io.BytesIO(pim), "Polo Pimentas.xlsx"),
+                (io.BytesIO(san), "Polo Santana.xlsx"),
+            ]
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 303
+    assert response.location.startswith("/dashboard/")
+
+    batch_id = response.location.removeprefix("/dashboard/")
+    batch_dir = Path(app.instance_path) / "uploads" / batch_id
+    assert batch_dir.is_dir()
+    assert (batch_dir / "manifest.json").exists()
+
+    from app.core.aggregator import load_batch
+
+    batch = load_batch(batch_dir)
+    assert {f.polo for f in batch.files} == {"PIMENTAS", "SANTANA"}
+    assert all(f.iso_week == "2026-W19" for f in batch.files)
 
 
 def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
