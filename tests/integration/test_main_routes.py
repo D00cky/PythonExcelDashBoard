@@ -313,6 +313,45 @@ def test_report_route_unknown_polo_404s(client, tmp_path):
     assert response.status_code == 404
 
 
+def test_report_route_legacy_single_upload(client, tmp_path):
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    payload = make_minimal_pimentas(tmp_path, with_inspections=True).read_bytes()
+    upload_response = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(payload), "report.xlsx")},
+        content_type="multipart/form-data",
+    )
+    upload_id = upload_response.location.removeprefix("/dashboard/")
+
+    response = client.get(f"/report/{upload_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Pimentas" in body
+    assert "fmt=docx" in body
+    assert "fmt=pptx" in body
+
+
+def test_dashboard_legacy_single_upload_still_renders(client, tmp_path):
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    payload = make_minimal_pimentas(tmp_path, with_inspections=True).read_bytes()
+    upload_response = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(payload), "report.xlsx")},
+        content_type="multipart/form-data",
+    )
+    upload_id = upload_response.location.removeprefix("/dashboard/")
+
+    response = client.get(f"/dashboard/{upload_id}")
+
+    assert response.status_code == 200
+    # Legacy single-file dashboard should NOT show batch tabs / selection bar.
+    body = response.data.decode("utf-8")
+    assert "Todos" not in body or "polo=" not in body
+
+
 def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
     from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
