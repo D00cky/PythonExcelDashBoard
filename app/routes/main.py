@@ -188,6 +188,42 @@ def _build_tabs(upload_id: str, batch: PoloBatch, *, active_polo: str | None) ->
     return tabs
 
 
+_MONTH_PT = {
+    "01": "Janeiro",
+    "02": "Fevereiro",
+    "03": "Março",
+    "04": "Abril",
+    "05": "Maio",
+    "06": "Junho",
+    "07": "Julho",
+    "08": "Agosto",
+    "09": "Setembro",
+    "10": "Outubro",
+    "11": "Novembro",
+    "12": "Dezembro",
+}
+
+
+def _period_options(batch: PoloBatch, view: str) -> list[dict[str, str]]:
+    """Friendly labels for the period dropdown — date range for weeks,
+    month-name for months. Falls back to the raw key on unexpected input."""
+    if view == "weekly":
+        options = []
+        seen: set[str] = set()
+        for f in sorted(batch.files, key=lambda x: x.period_start):
+            if f.iso_week in seen:
+                continue
+            seen.add(f.iso_week)
+            label = f"{f.iso_week} · {f.period_start:%d/%m} a {f.period_end:%d/%m/%Y}"
+            options.append({"key": f.iso_week, "label": label})
+        return options
+    options = []
+    for month in batch.months:
+        year, mm = month.split("-", 1)
+        options.append({"key": month, "label": f"{_MONTH_PT.get(mm, mm)} {year}"})
+    return options
+
+
 def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
     batch = load_batch(batch_dir)
     available_polos = batch.polos
@@ -218,11 +254,7 @@ def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
             "selected_polos": list(selected_polos),
             "available_weeks": available_weeks,
             "available_months": available_months,
-            "available_periods": (
-                [{"key": w, "label": w} for w in available_weeks]
-                if view == "weekly"
-                else [{"key": m, "label": m} for m in available_months]
-            ),
+            "available_periods": _period_options(batch, view),
             "selected_period": period,
             "view": view,
             "is_batch": True,
