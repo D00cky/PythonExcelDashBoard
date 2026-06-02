@@ -261,11 +261,19 @@ def team_detail(upload_id: str) -> str:
 
 
 _SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx"}
+_BATCH_FORMATS = {"md", "xlsx", "html"}
 
 
 @bp.get("/download/<upload_id>")
 def download(upload_id: str) -> Response:
     fmt = request.args.get("fmt", "md").lower()
+
+    kind, target = _resolve_upload(upload_id)
+    if kind == "batch":
+        if fmt not in _BATCH_FORMATS:
+            abort(501)
+        return _download_batch(upload_id, target, fmt)
+
     if fmt not in _SUPPORTED_FORMATS:
         abort(400)
 
@@ -276,6 +284,30 @@ def download(upload_id: str) -> Response:
         abort(404)
 
     body, mimetype = render_export(fmt, template, workbook, path)
+    response = Response(body, mimetype=mimetype)
+    response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
+    return response
+
+
+def _download_batch(upload_id: str, batch_dir: Path, fmt: str) -> Response:
+    from app.core.exporters.batch import BatchSelection, render_batch_export
+
+    batch = load_batch(batch_dir)
+    view = request.args.get("view", "weekly")
+    if view not in ("weekly", "monthly"):
+        view = "weekly"
+    period = request.args.get("period") or (
+        (batch.iso_weeks[-1] if batch.iso_weeks else "")
+        if view == "weekly"
+        else (batch.months[-1] if batch.months else "")
+    )
+    polos = tuple(request.args.getlist("polos")) or tuple(batch.polos)
+    polos = tuple(p for p in polos if p in batch.polos)
+    if not polos:
+        polos = tuple(batch.polos)
+
+    selection = BatchSelection(polos=polos, view=view, period_key=period)
+    body, mimetype = render_batch_export(fmt, batch, selection)
     response = Response(body, mimetype=mimetype)
     response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
     return response

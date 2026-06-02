@@ -170,6 +170,43 @@ def test_batch_dashboard_filters_to_one_polo(client, tmp_path):
     assert "PIMENTAS" in body or "Pimentas" in body
 
 
+def test_batch_download_markdown_mentions_both_polos(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?fmt=md&view=monthly&period=2026-05")
+
+    assert response.status_code == 200
+    assert "markdown" in response.mimetype
+    body = response.data.decode("utf-8")
+    # Combined markdown should mention both Polos somewhere (header or table).
+    assert "PIMENTAS" in body.upper()
+    assert "SANTANA" in body.upper()
+
+
+def test_batch_download_html_standalone(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?fmt=html&view=weekly&period=2026-W19")
+
+    assert response.status_code == 200
+    assert "html" in response.mimetype
+    body = response.data.decode("utf-8")
+    assert "<html" in body.lower()
+    assert "PIMENTAS" in body.upper() or "Pimentas" in body
+    assert "SANTANA" in body.upper() or "Santana" in body
+
+
+def test_batch_download_xlsx_is_workbook(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?fmt=xlsx&view=weekly&period=2026-W19")
+
+    assert response.status_code == 200
+    assert "spreadsheetml" in response.mimetype
+    # xlsx files are zip archives starting with PK\x03\x04.
+    assert response.data[:2] == b"PK"
+
+
 def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
     from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
