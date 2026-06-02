@@ -195,6 +195,9 @@
 
         {% if teams_sorted %}
         <form class="download" action="/dashboard/{{ download_action.split('/')[2] }}/team" method="get">
+            {% if active_polo and active_polo != "__all" %}
+            <input type="hidden" name="polo" value="{{ active_polo }}">
+            {% endif %}
             <label for="team">Detalhar equipe:</label>
             <select id="team" name="name">
                 {% for t in teams_sorted %}<option value="{{ t }}">{{ t }}</option>{% endfor %}

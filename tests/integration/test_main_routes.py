@@ -307,6 +307,34 @@ def test_per_polo_unknown_returns_404(client, tmp_path):
     assert response.status_code == 404
 
 
+def test_batch_team_detail_resolves_via_polo_param(client, tmp_path):
+    """Clicking a team link from a Polo tab should land on /team?name=...&polo=...
+    and resolve to that Polo's xlsx (not 404 because the batch uuid has no
+    top-level xlsx)."""
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    # First grab a real team name from the Pimentas inspections.
+    from tests.fixtures.pimentas_minimal import _INSPECTION_ROWS
+
+    sample_team = _INSPECTION_ROWS["ÁGUA"][0][0]  # e.g. "JOSIAS ALMEIDA FRANCISCO"
+
+    response = client.get(
+        f"/dashboard/{batch_id}/team",
+        query_string={"name": sample_team, "polo": "PIMENTAS"},
+    )
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert sample_team in body
+
+
+def test_batch_team_detail_without_polo_returns_400(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+    response = client.get(f"/dashboard/{batch_id}/team", query_string={"name": "X"})
+    # Batch context needs a polo scope for team detail. Either 400 or 404 is fine.
+    assert response.status_code in (400, 404)
+
+
 def test_dashboard_links_to_generate_report(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 

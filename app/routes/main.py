@@ -386,7 +386,18 @@ def team_detail(upload_id: str) -> str:
     team_name = (request.args.get("name") or "").strip()
     if not team_name:
         abort(400)
-    path = _upload_path(upload_id)
+
+    kind, target = _resolve_upload(upload_id)
+    if kind == "batch":
+        polo_arg = (request.args.get("polo") or "").strip()
+        if not polo_arg or polo_arg == "__all":
+            abort(400)
+        path = _batch_polo_path(target, polo_arg)
+        dashboard_url = url_for("main.dashboard", upload_id=upload_id) + f"?polo={polo_arg}"
+    else:
+        path = target
+        dashboard_url = url_for("main.dashboard", upload_id=upload_id)
+
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
     if not isinstance(template, PimentasTemplate):
@@ -398,7 +409,7 @@ def team_detail(upload_id: str) -> str:
         "team_detail.html",
         polo_name=template.polo_name.title(),
         team_name=team_name,
-        dashboard_url=url_for("main.dashboard", upload_id=upload_id),
+        dashboard_url=dashboard_url,
         detail=detail,
     )
 
