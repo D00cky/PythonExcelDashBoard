@@ -78,15 +78,7 @@
 
     {% if available_polos %}
     <form class="filter-bar selection-bar" method="get" action="">
-        <fieldset style="border: 1px solid #ccc; border-radius: 6px; padding: 0.4rem 0.7rem;">
-            <legend style="font-size: 0.78rem; padding: 0 0.3rem;">Polos</legend>
-            {% for p in available_polos %}
-            <label style="display: inline-block; margin-right: 0.6rem; text-transform: none;">
-                <input type="checkbox" name="polos" value="{{ p }}" {% if p in selected_polos %}checked{% endif %}>
-                {{ p|title }}
-            </label>
-            {% endfor %}
-        </fieldset>
+        <input type="hidden" name="polo" value="__all">
         <fieldset style="border: 1px solid #ccc; border-radius: 6px; padding: 0.4rem 0.7rem;">
             <legend style="font-size: 0.78rem; padding: 0 0.3rem;">Visão</legend>
             <label style="display: inline-block; margin-right: 0.6rem; text-transform: none;">
@@ -108,6 +100,9 @@
             {% endif %}
         </div>
         <button type="submit">Atualizar</button>
+        <div style="margin-left:auto;font-size:.78rem;color:#666;">
+            {{ available_polos|length }} Polo{{ 's' if available_polos|length != 1 else '' }} agregados — escolha um Polo individual pelas abas acima
+        </div>
     </form>
     {% endif %}
 

@@ -145,18 +145,34 @@ def _upload_two_polos(client, tmp_path) -> str:
     return response.location.removeprefix("/dashboard/")
 
 
-def test_batch_dashboard_renders_with_polo_selector(client, tmp_path):
+def test_batch_dashboard_todos_tab_shows_visao_and_periodo_no_polo_checkboxes(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
     response = client.get(f"/dashboard/{batch_id}")
 
     assert response.status_code == 200
     body = response.data.decode("utf-8")
-    # Both Polos discoverable in the selection bar.
+    # Both Polos still reachable via the tab strip.
     assert "PIMENTAS" in body or "Pimentas" in body
     assert "SANTANA" in body or "Santana" in body
-    # View toggle present.
+    # View toggle + period dropdown stay.
     assert "Semanal" in body and "Mensal" in body
+    # Polos checkbox group is gone — tabs are the only Polo control.
+    assert 'name="polos"' not in body
+
+
+def test_per_polo_tab_hides_visao_and_periodo(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?polo=PIMENTAS")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # On a single-Polo tab the period/view selector is hidden — only the
+    # tab strip + the dashboard for that file remain.
+    assert 'name="polos"' not in body
+    assert 'name="view"' not in body
+    assert 'name="period"' not in body
 
 
 def test_batch_dashboard_filters_to_one_polo(client, tmp_path):
