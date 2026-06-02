@@ -264,6 +264,55 @@ def test_per_polo_unknown_returns_404(client, tmp_path):
     assert response.status_code == 404
 
 
+def test_dashboard_links_to_generate_report(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?polo=PIMENTAS")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Generate-report CTA visible on the per-tab dashboard
+    assert "Gerar Relatório" in body
+    assert f"/report/{batch_id}" in body
+    assert "polo=PIMENTAS" in body
+
+
+def test_report_route_renders_polo_sections_and_downloads(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/report/{batch_id}?polo=PIMENTAS")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Title shows Polo
+    assert "Pimentas" in body
+    # Sections from the formal Sabesp layout
+    assert "Índice de Conformidade" in body or "ÍNDICE DE CONFORMIDADE" in body.upper()
+    # Download links per format
+    assert "fmt=docx" in body
+    assert "fmt=pdf" in body
+    assert "fmt=pptx" in body
+
+
+def test_report_route_combined_view(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/report/{batch_id}?polo=__all")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "PIMENTAS" in body.upper()
+    assert "SANTANA" in body.upper()
+
+
+def test_report_route_unknown_polo_404s(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/report/{batch_id}?polo=NAOEXISTE")
+
+    assert response.status_code == 404
+
+
 def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
     from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 

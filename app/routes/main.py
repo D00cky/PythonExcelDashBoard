@@ -303,6 +303,72 @@ def _build_batch_context(
     }
 
 
+@bp.get("/report/<upload_id>")
+def report(upload_id: str) -> str:
+    """Formal "Gerar Relatório" view — formatted report with download buttons.
+
+    Single Polo: ``?polo=<NAME>`` → per-Polo report (docx / pdf / pptx downloads).
+    Combined: ``?polo=__all`` → cross-Polo summary (md / xlsx / html downloads).
+    """
+    kind, target = _resolve_upload(upload_id)
+    polo_arg = request.args.get("polo", "__all")
+    download_action = url_for("main.download", upload_id=upload_id)
+
+    if kind == "legacy":
+        path = target
+        workbook = load_workbook(path, data_only=True, read_only=True)
+        template = recognize(workbook.sheetnames)
+        if not isinstance(template, PimentasTemplate):
+            abort(404)
+        context = _build_polo_context(template, workbook, path)
+        return render_template(
+            "report.html",
+            scope_label=template.polo_name.title(),
+            scope_kind="single",
+            download_action=download_action,
+            polo_query="",
+            **context,
+        )
+
+    batch_dir = target
+    if polo_arg and polo_arg != "__all":
+        path = _batch_polo_path(batch_dir, polo_arg)
+        workbook = load_workbook(path, data_only=True, read_only=True)
+        template = recognize(workbook.sheetnames)
+        if not isinstance(template, PimentasTemplate):
+            abort(404)
+        context = _build_polo_context(template, workbook, path)
+        return render_template(
+            "report.html",
+            scope_label=polo_arg.title(),
+            scope_kind="single",
+            download_action=download_action,
+            polo_query=f"polo={polo_arg}",
+            **context,
+        )
+
+    batch = load_batch(batch_dir)
+    selected_polos = tuple(batch.polos)
+    view = request.args.get("view", "weekly")
+    if view not in ("weekly", "monthly"):
+        view = "weekly"
+    period = request.args.get("period") or (
+        (batch.iso_weeks[-1] if batch.iso_weeks else "")
+        if view == "weekly"
+        else (batch.months[-1] if batch.months else "")
+    )
+    context = _build_batch_context(batch, selected_polos, view, period)
+    context["polos_included"] = list(selected_polos)
+    return render_template(
+        "report.html",
+        scope_label="Múltiplos Polos",
+        scope_kind="combined",
+        download_action=download_action,
+        polo_query="polo=__all",
+        **context,
+    )
+
+
 @bp.get("/dashboard/<upload_id>/team")
 def team_detail(upload_id: str) -> str:
     team_name = (request.args.get("name") or "").strip()

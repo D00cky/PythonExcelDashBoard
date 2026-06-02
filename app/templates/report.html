@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <title>Relatório — {{ scope_label }}</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <style>
+        body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; margin: 2rem auto; max-width: 1100px; color: #222; }
+        h1 { color: #1f7e72; border-bottom: 3px solid #2a9d8f; padding-bottom: .5rem; }
+        h2 { color: #1f7e72; margin-top: 2.5rem; border-bottom: 1px solid #e0e6e4; padding-bottom: .3rem; }
+        h3 { color: #444; margin-top: 1.5rem; }
+        .meta { color: #555; margin: .25rem 0 1.5rem; }
+        .meta strong { color: #222; }
+        .kpi-row { display: flex; gap: 1.2rem; margin: 1.5rem 0; flex-wrap: wrap; }
+        .kpi-card { flex: 1; min-width: 180px; padding: 1rem 1.2rem; background: #f7f9f8; border: 1px solid #e0e6e4; border-radius: 8px; }
+        .kpi-value { font-size: 2.1rem; font-weight: 700; color: #1f7e72; }
+        .kpi-value.amber { color: #c87a00; }
+        .kpi-value.red { color: #c0392b; }
+        .kpi-label { font-size: .85rem; color: #555; margin-top: .2rem; }
+        table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+        th, td { border: 1px solid #ccc; padding: .45rem .7rem; text-align: left; font-size: .92rem; }
+        th { background: #eef4f3; }
+        td.num, th.num { text-align: right; }
+        .download-bar { position: sticky; top: 0; background: #fff; padding: .8rem 0; border-bottom: 1px solid #e0e6e4; display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; z-index: 10; }
+        .download-bar a { padding: .5rem 1rem; background: #2a9d8f; color: #fff; text-decoration: none; border-radius: 6px; font-size: .9rem; }
+        .download-bar a:hover { background: #1f7e72; }
+        .download-bar a.secondary { background: #eef4f3; color: #1f7e72; border: 1px solid #cfdedb; }
+        .home-link { color: #1f7e72; text-decoration: none; margin-right: auto; }
+        .home-link:hover { text-decoration: underline; }
+        .chart { margin: 1.5rem 0; }
+        @media print {
+            .download-bar { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="download-bar">
+        <a href="/" class="home-link">← Início</a>
+        {% if scope_kind == "single" %}
+        <span style="margin-right: .5rem; color: #555;">Baixar:</span>
+        <a href="{{ download_action }}?fmt=docx{% if polo_query %}&{{ polo_query }}{% endif %}">.docx</a>
+        <a href="{{ download_action }}?fmt=pdf{% if polo_query %}&{{ polo_query }}{% endif %}">.pdf</a>
+        <a href="{{ download_action }}?fmt=pptx{% if polo_query %}&{{ polo_query }}{% endif %}">.pptx</a>
+        <a class="secondary" href="{{ download_action }}?fmt=xlsx{% if polo_query %}&{{ polo_query }}{% endif %}">.xlsx</a>
+        <a class="secondary" href="{{ download_action }}?fmt=md{% if polo_query %}&{{ polo_query }}{% endif %}">.md</a>
+        {% else %}
+        <span style="margin-right: .5rem; color: #555;">Baixar:</span>
+        <a href="{{ download_action }}?fmt=html&{{ polo_query }}">.html</a>
+        <a href="{{ download_action }}?fmt=xlsx&{{ polo_query }}">.xlsx</a>
+        <a href="{{ download_action }}?fmt=md&{{ polo_query }}">.md</a>
+        <span style="color:#999; font-size:.85rem;">(.docx / .pdf por Polo — escolha uma aba)</span>
+        {% endif %}
+    </div>
+
+    <h1>Relatório — Polo {{ scope_label }}</h1>
+    <div class="meta">
+        {% if periodo %}<strong>Período:</strong> {{ periodo }} &nbsp;{% endif %}
+        {% if polos_included %}<strong>Polos incluídos:</strong> {{ polos_included|join(', ') }} &nbsp;{% endif %}
+        {% if total_inspections %}<strong>Inspeções avaliadas:</strong> {{ total_inspections }}{% endif %}
+    </div>
+
+    <div class="kpi-row">
+        {% if iqs_overall is not none %}
+        <div class="kpi-card">
+            {% set pct = iqs_overall * 100 %}
+            {% if pct >= 80 %}{% set cls = "" %}
+            {% elif pct >= 60 %}{% set cls = "amber" %}
+            {% else %}{% set cls = "red" %}{% endif %}
+            <div class="kpi-value {{ cls }}">{{ "%.1f"|format(pct) }}%</div>
+            <div class="kpi-label">IQS — Índice de Qualidade</div>
+        </div>
+        {% endif %}
+        {% if total_fotos %}
+        <div class="kpi-card">
+            <div class="kpi-value">{{ total_fotos }}</div>
+            <div class="kpi-label">Fotos Avaliadas</div>
+        </div>
+        {% endif %}
+        {% if total_failing_os %}
+        <div class="kpi-card">
+            <div class="kpi-value red">{{ total_failing_os }}</div>
+            <div class="kpi-label">OS Não Conformes</div>
+        </div>
+        {% endif %}
+    </div>
+
+    <h2>1. Índice de Conformidade (IC) por Serviço</h2>
+    <div class="chart">{{ fig_ic_bar|safe }}</div>
+
+    <h2>2. Índice de Qualidade (IQS) por Serviço</h2>
+    <div class="chart">{{ fig_iqs_bar|safe }}</div>
+    <div class="chart">{{ fig_photos|safe }}</div>
+
+    <h2>3. Inspeções por Equipe × Serviço</h2>
+    <div class="chart">{{ fig_team_service|safe }}</div>
+
+    <h2>4. Distribuição por TSS</h2>
+    <div class="chart">{{ fig_tss|safe }}</div>
+
+    {% if fig_failing_stages %}
+    <h2>5. Etapas com Mais Não Conformidades</h2>
+    <div class="chart">{{ fig_failing_stages|safe }}</div>
+    {% endif %}
+
+    {% if fig_worst_teams %}
+    <h2>6. Equipes com Maior Volume de NCs</h2>
+    <div class="chart">{{ fig_worst_teams|safe }}</div>
+    {% endif %}
+
+    {% if per_service_sections %}
+    <h2>7. Detalhamento por Serviço</h2>
+    {% for sec in per_service_sections %}
+    <h3>{{ sec.service }}</h3>
+    <div class="chart">{{ sec.team_chart|safe }}</div>
+    <div class="chart">{{ sec.tss_chart|safe }}</div>
+    {% endfor %}
+    {% endif %}
+
+    {% if top_nc_observations %}
+    <h2>8. Principais Observações de NC</h2>
+    <table>
+        <thead><tr><th>Etapa</th><th>Observação</th><th class="num">Ocorrências</th></tr></thead>
+        <tbody>
+            {% for r in top_nc_observations %}
+            <tr><td>{{ r.stage }}</td><td>{{ r.observation }}</td><td class="num">{{ r.count }}</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    <footer style="margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e0e6e4; color: #777; font-size: .85rem;">
+        Relatório gerado automaticamente — Polo {{ scope_label }}.
+    </footer>
+</body>
+</html>

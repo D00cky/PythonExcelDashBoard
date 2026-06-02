@@ -68,10 +68,11 @@
     </header>
 
     {% if tabs %}
-    <nav class="polo-tabs" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:1rem 0;border-bottom:2px solid #e0e6e4;padding-bottom:.5rem;">
+    <nav class="polo-tabs" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:1rem 0;border-bottom:2px solid #e0e6e4;padding-bottom:.5rem;align-items:center;">
         {% for t in tabs %}
         <a href="{{ t.href }}" style="padding:.4rem .9rem;border-radius:6px 6px 0 0;text-decoration:none;{% if t.active %}background:#2a9d8f;color:#fff;font-weight:600;{% else %}background:#f7f9f8;color:#333;border:1px solid #e0e6e4;{% endif %}">{{ t.label }}</a>
         {% endfor %}
+        <a href="/report/{{ download_action.split('/')[2] }}?{{ polo_query or 'polo=__all' }}" style="margin-left:auto;padding:.5rem 1rem;background:#1f7e72;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">📄 Gerar Relatório</a>
     </nav>
     {% endif %}
 
