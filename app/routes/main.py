@@ -16,13 +16,29 @@ from flask import (
 )
 from openpyxl import load_workbook
 
-from app.core.aggregator import discover_polo_file, write_manifest
+from app.core.aggregator import (
+    MANIFEST_FILENAME,
+    PoloBatch,
+    combined_inspections,
+    combined_stage_failures,
+    discover_polo_file,
+    filter_batch,
+    load_batch,
+    write_manifest,
+)
+from app.core.aggregator import (
+    ic_rows_from_inspections as _ic_rows_from_inspections,
+)
+from app.core.aggregator import (
+    iqs_overall_from_inspections as _iqs_overall_from_inspections,
+)
+from app.core.aggregator import (
+    iqs_rows_from_inspections as _iqs_rows_from_inspections,
+)
 from app.core.exporters import render_export
 from app.core.templates import recognize
 from app.core.templates.pimentas import (
     PimentasTemplate,
-    ServiceIC,
-    ServiceIQS,
     top_observations,
 )
 
@@ -71,7 +87,11 @@ def upload():
 
 @bp.get("/dashboard/<upload_id>")
 def dashboard(upload_id: str) -> str:
-    path = _upload_path(upload_id)
+    kind, target = _resolve_upload(upload_id)
+    if kind == "batch":
+        return _render_batch_dashboard(upload_id, target)
+
+    path = target
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
     if not isinstance(template, PimentasTemplate):
@@ -92,6 +112,130 @@ def dashboard(upload_id: str) -> str:
             swap_dates,
         ),
     )
+
+
+def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
+    batch = load_batch(batch_dir)
+    available_polos = batch.polos
+    available_weeks = batch.iso_weeks
+    available_months = batch.months
+
+    view = request.args.get("view", "weekly")
+    if view not in ("weekly", "monthly"):
+        view = "weekly"
+    period = request.args.get("period") or (
+        (available_weeks[-1] if available_weeks else "")
+        if view == "weekly"
+        else (available_months[-1] if available_months else "")
+    )
+    selected_polos = tuple(request.args.getlist("polos")) or tuple(available_polos)
+    selected_polos = tuple(p for p in selected_polos if p in available_polos)
+    if not selected_polos:
+        selected_polos = tuple(available_polos)
+
+    context = _build_batch_context(batch, selected_polos, view, period)
+    context.update(
+        {
+            "download_action": url_for("main.download", upload_id=upload_id),
+            "available_polos": available_polos,
+            "selected_polos": list(selected_polos),
+            "available_weeks": available_weeks,
+            "available_months": available_months,
+            "available_periods": (
+                [{"key": w, "label": w} for w in available_weeks]
+                if view == "weekly"
+                else [{"key": m, "label": m} for m in available_months]
+            ),
+            "selected_period": period,
+            "view": view,
+            "is_batch": True,
+        }
+    )
+    return render_template("dashboard.html", **context)
+
+
+def _build_batch_context(
+    batch: PoloBatch,
+    polos: tuple[str, ...],
+    view: str,
+    period_key: str,
+) -> dict[str, Any]:
+    filtered = filter_batch(batch, polos=polos, view=view, period_key=period_key)
+    inspections = combined_inspections(filtered)
+    failures = combined_stage_failures(filtered)
+
+    # Pick any concrete PimentasTemplate instance for SERVICE_SHEETS + build_* methods.
+    template = PimentasTemplate()
+    services = sorted(template.SERVICE_SHEETS)
+    iqs_rows = _iqs_rows_from_inspections(inspections, services)
+    ic_rows = _ic_rows_from_inspections(inspections, services)
+    iqs_overall = _iqs_overall_from_inspections(inspections)
+
+    periodo = _periodo_from_inspections(inspections)
+    teams_sorted = (
+        sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
+    )
+    polo_label = polos[0].title() if len(polos) == 1 else "Múltiplos Polos"
+
+    per_service_sections = []
+    for idx, service in enumerate(services):
+        team_html = template.build_team_conformity_for_service(inspections, service).to_html(
+            include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"
+        )
+        tss_html = template.build_tss_conformity_for_service(inspections, service).to_html(
+            include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"
+        )
+        per_service_sections.append(
+            {
+                "service": service,
+                "team_chart": _defer_plotly_script(team_html),
+                "tss_chart": _defer_plotly_script(tss_html),
+            }
+        )
+
+    return {
+        "polo_name": polo_label,
+        "periodo": periodo,
+        "iqs_overall": iqs_overall,
+        "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
+        "total_inspections": len(inspections),
+        "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
+            include_plotlyjs=False, full_html=False, div_id="ic-bar"
+        ),
+        "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
+            include_plotlyjs=False, full_html=False, div_id="iqs-bar"
+        ),
+        "fig_photos": template.build_photo_conformity_stacked(iqs_rows).to_html(
+            include_plotlyjs=False, full_html=False, div_id="photos"
+        ),
+        "fig_team_service": template.build_team_service_stacked(inspections).to_html(
+            include_plotlyjs=False, full_html=False, div_id="team-service"
+        ),
+        "fig_tss": template.build_tss_distribution(inspections).to_html(
+            include_plotlyjs=False, full_html=False, div_id="tss-distribution"
+        ),
+        "fig_failing_stages": template.build_top_failing_stages(failures).to_html(
+            include_plotlyjs=False, full_html=False, div_id="failing-stages"
+        ),
+        "fig_worst_teams": template.build_worst_teams(inspections).to_html(
+            include_plotlyjs=False, full_html=False, div_id="worst-teams"
+        ),
+        "top_nc_observations": top_observations(failures, "NC"),
+        "top_sf_observations": top_observations(failures, "SF"),
+        "total_failing_os": int(inspections["nao_conforme_count"].sum())
+        if not inspections.empty
+        else 0,
+        "per_service_sections": per_service_sections,
+        "teams_sorted": teams_sorted,
+        "filter_start": "",
+        "filter_end": "",
+        "available_start": "",
+        "available_end": "",
+        "is_filtered": False,
+        "swap_dates": False,
+        "recomputed": True,
+        "span_warning": None,
+    }
 
 
 @bp.get("/dashboard/<upload_id>/team")
@@ -142,6 +286,18 @@ def _upload_path(upload_id: str) -> Path:
     if not path.exists():
         abort(404)
     return path
+
+
+def _resolve_upload(upload_id: str) -> tuple[str, Path]:
+    """Return either ("batch", batch_dir) or ("legacy", xlsx_path), 404 if neither."""
+    uploads_dir = Path(current_app.instance_path) / "uploads"
+    batch_dir = uploads_dir / upload_id
+    if batch_dir.is_dir() and (batch_dir / MANIFEST_FILENAME).exists():
+        return "batch", batch_dir
+    legacy = uploads_dir / f"{upload_id}.xlsx"
+    if legacy.exists():
+        return "legacy", legacy
+    abort(404)
 
 
 def _periodo_from_inspections(df) -> str | None:
@@ -379,58 +535,9 @@ def _swap_day_month(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _iqs_rows_from_inspections(df: pd.DataFrame, services: list[str]) -> list[ServiceIQS]:
-    """Reconstruct ServiceIQS records from raw inspection cells.
-
-    Photos are summed across stage cells per service. ``fotos_nc`` lumps
-    NC + SF together to match how the CAPA-aggregated row treats failures.
-    """
-    out: list[ServiceIQS] = []
-    if df.empty:
-        return out
-    for svc in services:
-        sub = df[df["service"] == svc]
-        if sub.empty:
-            continue
-        avaliadas = int(sub["photo_total"].sum())
-        if avaliadas == 0:
-            continue
-        nc = int((sub["photo_nc"] + sub["photo_sf"]).sum())
-        conforme = int(sub["photo_conforme"].sum())
-        out.append(
-            ServiceIQS(
-                name=svc.title(),
-                fotos_avaliadas=avaliadas,
-                fotos_nc=nc,
-                fotos_conforme=conforme,
-                nc_pct=nc / avaliadas,
-                conforme_pct=conforme / avaliadas,
-            )
-        )
-    return out
-
-
-def _ic_rows_from_inspections(df: pd.DataFrame, services: list[str]) -> list[ServiceIC]:
-    out: list[ServiceIC] = []
-    if df.empty:
-        return out
-    for svc in services:
-        sub = df[df["service"] == svc]
-        total = len(sub)
-        if total == 0:
-            continue
-        conf = int(sub["conforme_count"].sum())
-        out.append(ServiceIC(name=svc.title(), ic_pct=conf / total, lvs=total))
-    return out
-
-
-def _iqs_overall_from_inspections(df: pd.DataFrame) -> float | None:
-    if df.empty:
-        return None
-    total = int(df["photo_total"].sum())
-    if total == 0:
-        return None
-    return int(df["photo_conforme"].sum()) / total
+# Helpers _iqs_rows_from_inspections / _ic_rows_from_inspections /
+# _iqs_overall_from_inspections moved to app.core.aggregator and re-imported
+# above so the batch dashboard and single-file dashboard share one path.
 
 
 def _iso(ts: pd.Timestamp | None) -> str:

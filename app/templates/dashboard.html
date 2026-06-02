@@ -67,6 +67,38 @@
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong>{% if is_filtered %} <em>(filtrado)</em>{% endif %}</div>{% endif %}
     </header>
 
+    {% if available_polos %}
+    <form class="filter-bar selection-bar" method="get" action="">
+        <fieldset style="border: 1px solid #ccc; border-radius: 6px; padding: 0.4rem 0.7rem;">
+            <legend style="font-size: 0.78rem; padding: 0 0.3rem;">Polos</legend>
+            {% for p in available_polos %}
+            <label style="display: inline-block; margin-right: 0.6rem; text-transform: none;">
+                <input type="checkbox" name="polos" value="{{ p }}" {% if p in selected_polos %}checked{% endif %}>
+                {{ p|title }}
+            </label>
+            {% endfor %}
+        </fieldset>
+        <fieldset style="border: 1px solid #ccc; border-radius: 6px; padding: 0.4rem 0.7rem;">
+            <legend style="font-size: 0.78rem; padding: 0 0.3rem;">Visão</legend>
+            <label style="display: inline-block; margin-right: 0.6rem; text-transform: none;">
+                <input type="radio" name="view" value="weekly" {% if view == 'weekly' %}checked{% endif %}> Semanal
+            </label>
+            <label style="display: inline-block; text-transform: none;">
+                <input type="radio" name="view" value="monthly" {% if view == 'monthly' %}checked{% endif %}> Mensal
+            </label>
+        </fieldset>
+        <div>
+            <label for="period">Período</label>
+            <select id="period" name="period" style="padding: 0.45rem 0.6rem; border: 1px solid #ccc; border-radius: 6px;">
+                {% for p in available_periods %}
+                <option value="{{ p.key }}" {% if p.key == selected_period %}selected{% endif %}>{{ p.label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit">Atualizar</button>
+    </form>
+    {% endif %}
+
     {% if span_warning %}
     <div class="warning-banner">
         ⚠ {{ span_warning }}

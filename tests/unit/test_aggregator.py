@@ -6,7 +6,10 @@ import pytest
 from app.core.aggregator import (
     PoloBatch,
     PoloFile,
+    combined_ic_rows,
     combined_inspections,
+    combined_iqs_overall,
+    combined_iqs_rows,
     combined_stage_failures,
     discover_polo_file,
     filter_batch,
@@ -227,3 +230,31 @@ class TestFilterBatch:
     def test_unknown_view_raises(self, two_polo_batch: PoloBatch) -> None:
         with pytest.raises(ValueError, match="view"):
             filter_batch(two_polo_batch, polos=("PIMENTAS",), view="yearly", period_key="2026")
+
+
+class TestCombinedIqsIc:
+    def test_iqs_rows_per_service(self, two_polo_batch: PoloBatch) -> None:
+        rows = combined_iqs_rows(two_polo_batch, services=["ÁGUA", "ESGOTO"])
+        names = {r.name for r in rows}
+        assert names <= {"Água", "Esgoto"}
+        for r in rows:
+            assert r.fotos_avaliadas > 0
+            assert r.nc_pct + r.conforme_pct == pytest.approx(1.0, abs=1e-9)
+
+    def test_ic_rows_per_service(self, two_polo_batch: PoloBatch) -> None:
+        rows = combined_ic_rows(two_polo_batch, services=["ÁGUA", "ESGOTO"])
+        names = {r.name for r in rows}
+        assert names <= {"Água", "Esgoto"}
+        for r in rows:
+            assert r.lvs > 0
+            assert 0.0 <= r.ic_pct <= 1.0
+
+    def test_iqs_overall_within_unit_interval(self, two_polo_batch: PoloBatch) -> None:
+        value = combined_iqs_overall(two_polo_batch)
+        assert value is None or 0.0 <= value <= 1.0
+
+    def test_empty_batch_returns_empty(self, tmp_path: Path) -> None:
+        empty = PoloBatch(batch_dir=tmp_path, files=[])
+        assert combined_iqs_rows(empty, services=["ÁGUA"]) == []
+        assert combined_ic_rows(empty, services=["ÁGUA"]) == []
+        assert combined_iqs_overall(empty) is None

@@ -114,6 +114,62 @@ def test_upload_accepts_multiple_files_and_writes_batch_manifest(client, app, tm
     assert all(f.iso_week == "2026-W19" for f in batch.files)
 
 
+def _upload_two_polos(client, tmp_path) -> str:
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    pim = make_minimal_pimentas(
+        tmp_path,
+        polo="PIMENTAS",
+        periodo="Período: 04/05/2026 à 10/05/2026",
+        with_inspections=True,
+        file_name="pim.xlsx",
+    ).read_bytes()
+    san = make_minimal_pimentas(
+        tmp_path,
+        polo="SANTANA",
+        periodo="Período: 04/05/2026 à 10/05/2026",
+        with_inspections=True,
+        file_name="san.xlsx",
+    ).read_bytes()
+    response = client.post(
+        "/upload",
+        data={
+            "file": [
+                (io.BytesIO(pim), "Polo Pimentas.xlsx"),
+                (io.BytesIO(san), "Polo Santana.xlsx"),
+            ]
+        },
+        content_type="multipart/form-data",
+    )
+    assert response.status_code == 303
+    return response.location.removeprefix("/dashboard/")
+
+
+def test_batch_dashboard_renders_with_polo_selector(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Both Polos discoverable in the selection bar.
+    assert "PIMENTAS" in body or "Pimentas" in body
+    assert "SANTANA" in body or "Santana" in body
+    # View toggle present.
+    assert "Semanal" in body and "Mensal" in body
+
+
+def test_batch_dashboard_filters_to_one_polo(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?polos=PIMENTAS&view=weekly&period=2026-W19")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Polo name appears, and selection state is reflected somewhere
+    assert "PIMENTAS" in body or "Pimentas" in body
+
+
 def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
     from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 

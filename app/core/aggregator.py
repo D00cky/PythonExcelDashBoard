@@ -19,7 +19,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from app.core.templates import recognize
-from app.core.templates.pimentas import PimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate, ServiceIC, ServiceIQS
 
 MANIFEST_FILENAME = "manifest.json"
 
@@ -130,6 +130,72 @@ def combined_inspections(batch: PoloBatch) -> pd.DataFrame:
     if not frames:
         return pd.DataFrame(columns=["polo"])
     return pd.concat(frames, ignore_index=True)
+
+
+def iqs_rows_from_inspections(df: pd.DataFrame, services: list[str]) -> list[ServiceIQS]:
+    """Reconstruct ServiceIQS records from raw inspection rows.
+
+    Photos are summed across stage cells per service; NC + SF are lumped into
+    ``fotos_nc`` so the result matches how DADOS aggregates failures.
+    """
+    out: list[ServiceIQS] = []
+    if df.empty:
+        return out
+    for svc in services:
+        sub = df[df["service"] == svc]
+        if sub.empty:
+            continue
+        avaliadas = int(sub["photo_total"].sum())
+        if avaliadas == 0:
+            continue
+        nc = int((sub["photo_nc"] + sub["photo_sf"]).sum())
+        conforme = int(sub["photo_conforme"].sum())
+        out.append(
+            ServiceIQS(
+                name=svc.title(),
+                fotos_avaliadas=avaliadas,
+                fotos_nc=nc,
+                fotos_conforme=conforme,
+                nc_pct=nc / avaliadas,
+                conforme_pct=conforme / avaliadas,
+            )
+        )
+    return out
+
+
+def ic_rows_from_inspections(df: pd.DataFrame, services: list[str]) -> list[ServiceIC]:
+    out: list[ServiceIC] = []
+    if df.empty:
+        return out
+    for svc in services:
+        sub = df[df["service"] == svc]
+        total = len(sub)
+        if total == 0:
+            continue
+        conf = int(sub["conforme_count"].sum())
+        out.append(ServiceIC(name=svc.title(), ic_pct=conf / total, lvs=total))
+    return out
+
+
+def iqs_overall_from_inspections(df: pd.DataFrame) -> float | None:
+    if df.empty:
+        return None
+    total = int(df["photo_total"].sum())
+    if total == 0:
+        return None
+    return int(df["photo_conforme"].sum()) / total
+
+
+def combined_iqs_rows(batch: PoloBatch, *, services: list[str]) -> list[ServiceIQS]:
+    return iqs_rows_from_inspections(combined_inspections(batch), services)
+
+
+def combined_ic_rows(batch: PoloBatch, *, services: list[str]) -> list[ServiceIC]:
+    return ic_rows_from_inspections(combined_inspections(batch), services)
+
+
+def combined_iqs_overall(batch: PoloBatch) -> float | None:
+    return iqs_overall_from_inspections(combined_inspections(batch))
 
 
 def combined_stage_failures(batch: PoloBatch) -> pd.DataFrame:
