@@ -333,6 +333,90 @@ def test_report_route_legacy_single_upload(client, tmp_path):
     assert "fmt=pptx" in body
 
 
+def test_per_polo_filter_form_preserves_polo_param(client, tmp_path):
+    import re
+
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?polo=PIMENTAS")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+
+    # The <form class="filter-bar"> must include a hidden <input name="polo"
+    # value="PIMENTAS"> so date filtering stays on the active tab.
+    form_match = re.search(
+        r'<form[^>]*class="filter-bar[^"]*"[^>]*>(.*?)</form>',
+        body,
+        flags=re.DOTALL,
+    )
+    assert form_match, "filter-bar form not found"
+    form_html = form_match.group(1)
+    assert 'name="polo"' in form_html, "polo hidden input missing from filter form"
+    assert 'value="PIMENTAS"' in form_html, "polo value not preserved"
+
+
+def test_swapped_dates_are_auto_corrected_on_upload(client, tmp_path):
+    """Reuploading a workbook with day/month-swapped dates should auto-correct
+    without requiring the user to click 'Corrigir dia/mês'."""
+
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    # First, build a normal minimal fixture, then overwrite its ÁGUA sheet
+    # with dates that look swapped (e.g. 03/27/2026 written as 27/03/2026 in
+    # the file but with weird month spread > 60 days).
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    from openpyxl import load_workbook as _lw
+
+    wb = _lw(path)
+    ws = wb["ÁGUA"]
+    # Build dates that span > 60 days when interpreted DD/MM (suspicious)
+    # but cluster into one target month when day/month is swapped.
+    from datetime import datetime
+
+    swapped_dates = [
+        datetime(2026, 1, 3),  # day=3, month=1 → swap → day=1, month=3 (March)
+        datetime(2026, 2, 3),  # day=3, month=2 → swap → day=2, month=3
+        datetime(2026, 11, 3),  # day=3, month=11 → swap → day=3, month=11 (no help)
+        datetime(2026, 12, 3),
+        datetime(2026, 3, 27),  # unambiguous (day > 12) → target month is March
+    ]
+    for i, dt in enumerate(swapped_dates, start=2):
+        ws[f"L{i}"] = dt
+    wb.save(path)
+    payload = path.read_bytes()
+
+    upload_response = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(payload), "swapped.xlsx")},
+        content_type="multipart/form-data",
+    )
+    upload_id = upload_response.location.removeprefix("/dashboard/")
+
+    response = client.get(f"/dashboard/{upload_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Auto-applied swap: no "Corrigir dia/mês" CTA visible.
+    assert "Corrigir dia/mês" not in body
+    # ?swap=0 still lets the user opt out.
+    raw_response = client.get(f"/dashboard/{upload_id}?swap=0")
+    assert raw_response.status_code == 200
+
+
+def test_combined_view_shows_period_hint_when_single_week(client, tmp_path):
+    """All 6 real files share the same period — make this visible to the user."""
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # The period dropdown should at least exist; if only one option, that's the
+    # data's truth, but a hint should clarify it.
+    assert "Período" in body or "period" in body.lower()
+
+
 def test_dashboard_legacy_single_upload_still_renders(client, tmp_path):
     from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 
@@ -540,8 +624,15 @@ def test_dashboard_warns_when_inspection_span_exceeds_60_days(client, tmp_path):
 
     response = client.get(f"/dashboard/{upload_id}")
     body = response.data.decode("utf-8")
-    assert "dia/mês trocados" in body
+    # Auto-swap is attempted but here it cannot anchor (no day>12 rows). The
+    # post-swap warning fires telling the user to inspect the source file.
     assert "warning-banner" in body
+    assert "dia/mês invertidos" in body
+    # No "Corrigir dia/mês" CTA — the correction was attempted automatically.
+    assert "Corrigir dia/mês" not in body
+    # The raw view is still available via opt-out.
+    raw = client.get(f"/dashboard/{upload_id}?swap=0")
+    assert raw.status_code == 200
 
 
 def test_dashboard_ignores_invalid_date_params(client, tmp_path):

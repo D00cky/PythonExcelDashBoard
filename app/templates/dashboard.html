@@ -103,24 +103,29 @@
                 <option value="{{ p.key }}" {% if p.key == selected_period %}selected{% endif %}>{{ p.label }}</option>
                 {% endfor %}
             </select>
+            {% if available_periods|length == 1 %}
+            <div style="font-size: .75rem; color: #777; margin-top: .2rem;">Apenas 1 {% if view == 'weekly' %}semana{% else %}mês{% endif %} disponível nos arquivos enviados</div>
+            {% endif %}
         </div>
         <button type="submit">Atualizar</button>
     </form>
     {% endif %}
 
+    {% set polo_q = (active_polo and active_polo != "__all") and ("polo=" ~ active_polo) or "" %}
     {% if span_warning %}
     <div class="warning-banner">
         ⚠ {{ span_warning }}
         {% if not swap_dates %}
-        <a class="swap-action" href="?swap=1{% if filter_start %}&start={{ filter_start }}{% endif %}{% if filter_end %}&end={{ filter_end }}{% endif %}">Corrigir dia/mês →</a>
+        <a class="swap-action" href="?swap=1{% if polo_q %}&{{ polo_q }}{% endif %}{% if filter_start %}&start={{ filter_start }}{% endif %}{% if filter_end %}&end={{ filter_end }}{% endif %}">Corrigir dia/mês →</a>
         {% else %}
-        <a class="swap-action" href="?{% if filter_start %}start={{ filter_start }}&{% endif %}{% if filter_end %}end={{ filter_end }}{% endif %}">Desfazer correção</a>
+        <a class="swap-action" href="?{% if polo_q %}{{ polo_q }}&{% endif %}{% if filter_start %}start={{ filter_start }}&{% endif %}{% if filter_end %}end={{ filter_end }}{% endif %}">Desfazer correção</a>
         {% endif %}
     </div>
     {% endif %}
 
     {% if available_start and available_end %}
     <form class="filter-bar" method="get" action="">
+        {% if active_polo and active_polo != "__all" %}<input type="hidden" name="polo" value="{{ active_polo }}">{% endif %}
         {% if swap_dates %}<input type="hidden" name="swap" value="1">{% endif %}
         <div>
             <label for="start">De</label>
@@ -131,7 +136,7 @@
             <input type="date" id="end" name="end" value="{{ filter_end }}" min="{{ available_start }}" max="{{ available_end }}">
         </div>
         <button type="submit">Filtrar período</button>
-        {% if is_filtered %}<a class="reset" href="?{% if swap_dates %}swap=1{% endif %}">Limpar</a>{% endif %}
+        {% if is_filtered %}<a class="reset" href="?{% if polo_q %}{{ polo_q }}{% if swap_dates %}&swap=1{% endif %}{% elif swap_dates %}swap=1{% endif %}">Limpar</a>{% endif %}
         <div class="hint">
             Dados disponíveis: <strong>{{ available_start }}</strong> a <strong>{{ available_end }}</strong>
             {% if swap_dates %}<span class="badge-swap">dia/mês corrigido</span>{% endif %}

@@ -103,7 +103,6 @@ def dashboard(upload_id: str) -> str:
 
     filter_start = _parse_iso_date(request.args.get("start", ""))
     filter_end = _parse_iso_date(request.args.get("end", ""))
-    swap_dates = request.args.get("swap") == "1"
 
     return render_template(
         "dashboard.html",
@@ -113,9 +112,23 @@ def dashboard(upload_id: str) -> str:
             path.stat().st_mtime_ns,
             _iso(filter_start),
             _iso(filter_end),
-            swap_dates,
+            _swap_arg(),
         ),
     )
+
+
+def _swap_arg() -> str:
+    """Normalize ?swap= into a cache-friendly key. '' = auto-detect."""
+    raw = request.args.get("swap")
+    if raw == "1":
+        return "1"
+    if raw == "0":
+        return "0"
+    return ""
+
+
+def _swap_arg_to_bool(value: str) -> bool | None:
+    return {"1": True, "0": False, "": None}.get(value)
 
 
 def _batch_polo_path(batch_dir: Path, polo: str) -> Path:
@@ -137,14 +150,13 @@ def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path
     batch = load_batch(batch_dir)
     filter_start = _parse_iso_date(request.args.get("start", ""))
     filter_end = _parse_iso_date(request.args.get("end", ""))
-    swap_dates = request.args.get("swap") == "1"
 
     context = _cached_polo_context(
         str(path),
         path.stat().st_mtime_ns,
         _iso(filter_start),
         _iso(filter_end),
-        swap_dates,
+        _swap_arg(),
     )
     return render_template(
         "dashboard.html",
@@ -507,10 +519,23 @@ def _build_polo_context(
     path: Path,
     filter_start: pd.Timestamp | None = None,
     filter_end: pd.Timestamp | None = None,
-    swap_dates: bool = False,
+    swap_dates: bool | None = None,
 ) -> dict[str, Any]:
     full_inspections = template.extract_inspections(path)
     full_failures = template.extract_stage_failures(path)
+
+    # Auto-detect day/month swap unless the user explicitly opted in or out.
+    if swap_dates is None:
+        raw_start, raw_end = _date_bounds(full_inspections)
+        if (
+            raw_start is not None
+            and raw_end is not None
+            and (raw_end - raw_start).days > _SUSPICIOUS_SPAN_DAYS
+        ):
+            swap_dates = True
+        else:
+            swap_dates = False
+
     if swap_dates:
         full_inspections = _swap_day_month(full_inspections)
         full_failures = _swap_day_month(full_failures)
@@ -615,9 +640,14 @@ def _cached_polo_context(
     mtime_ns: int,  # noqa: ARG001 — cache key only; invalidates when the file changes
     filter_start_iso: str,
     filter_end_iso: str,
-    swap_dates: bool,
+    swap_arg: str,
 ) -> dict[str, Any]:
-    """Memoised dashboard context — same file + same filter → reuse rendered figures."""
+    """Memoised dashboard context — same file + same filter → reuse rendered figures.
+
+    ``swap_arg`` is the URL value: ``""`` = auto-detect, ``"1"`` = force on,
+    ``"0"`` = force off. Kept as a string so the lru_cache key stays hashable
+    and stable across requests.
+    """
     path = Path(path_str)
     workbook = load_workbook(path, data_only=True, read_only=True)
     template = recognize(workbook.sheetnames)
@@ -628,7 +658,7 @@ def _cached_polo_context(
         path,
         filter_start=_parse_iso_date(filter_start_iso),
         filter_end=_parse_iso_date(filter_end_iso),
-        swap_dates=swap_dates,
+        swap_dates=_swap_arg_to_bool(swap_arg),
     )
 
 
