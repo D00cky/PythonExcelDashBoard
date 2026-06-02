@@ -207,6 +207,63 @@ def test_batch_download_xlsx_is_workbook(client, tmp_path):
     assert response.data[:2] == b"PK"
 
 
+def test_batch_dashboard_renders_polo_tabs(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Tabs UI: Todos + per-Polo links
+    assert "Todos" in body
+    # Each Polo should have a tab link reachable via ?polo=NAME
+    assert "polo=PIMENTAS" in body
+    assert "polo=SANTANA" in body
+
+
+def test_per_polo_tab_shows_only_that_polos_dashboard(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?polo=PIMENTAS")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Title shows the single Polo (title-cased)
+    assert "Pimentas" in body
+    # Per-tab download form includes docx + pdf + pptx
+    assert "docx" in body
+    assert "pdf" in body
+    assert "pptx" in body
+
+
+def test_per_polo_download_docx(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?polo=PIMENTAS&fmt=docx")
+
+    assert response.status_code == 200
+    assert "wordprocessingml" in response.mimetype
+    assert response.data[:2] == b"PK"
+
+
+def test_per_polo_download_pptx(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?polo=PIMENTAS&fmt=pptx")
+
+    assert response.status_code == 200
+    assert "presentationml" in response.mimetype
+    assert response.data[:2] == b"PK"
+
+
+def test_per_polo_unknown_returns_404(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?polo=NAOEXISTE")
+
+    assert response.status_code == 404
+
+
 def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
     from tests.fixtures.pimentas_minimal import make_minimal_pimentas
 

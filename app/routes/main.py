@@ -89,6 +89,10 @@ def upload():
 def dashboard(upload_id: str) -> str:
     kind, target = _resolve_upload(upload_id)
     if kind == "batch":
+        polo_arg = request.args.get("polo")
+        if polo_arg and polo_arg != "__all":
+            path = _batch_polo_path(target, polo_arg)
+            return _render_single_polo_dashboard(upload_id, path, batch_dir=target, polo=polo_arg)
         return _render_batch_dashboard(upload_id, target)
 
     path = target
@@ -114,6 +118,64 @@ def dashboard(upload_id: str) -> str:
     )
 
 
+def _batch_polo_path(batch_dir: Path, polo: str) -> Path:
+    """Return the xlsx path for ``polo`` inside the batch, or abort 404."""
+    batch = load_batch(batch_dir)
+    for pf in batch.files:
+        if pf.polo == polo:
+            return pf.file_path
+    abort(404)
+
+
+def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path, polo: str) -> str:
+    """Render the legacy single-file dashboard, but tagged as one tab in a batch."""
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    template = recognize(workbook.sheetnames)
+    if not isinstance(template, PimentasTemplate):
+        abort(404)
+
+    batch = load_batch(batch_dir)
+    filter_start = _parse_iso_date(request.args.get("start", ""))
+    filter_end = _parse_iso_date(request.args.get("end", ""))
+    swap_dates = request.args.get("swap") == "1"
+
+    context = _cached_polo_context(
+        str(path),
+        path.stat().st_mtime_ns,
+        _iso(filter_start),
+        _iso(filter_end),
+        swap_dates,
+    )
+    return render_template(
+        "dashboard.html",
+        download_action=url_for("main.download", upload_id=upload_id),
+        tabs=_build_tabs(upload_id, batch, active_polo=polo),
+        active_polo=polo,
+        polo_query=f"polo={polo}",
+        **context,
+    )
+
+
+def _build_tabs(upload_id: str, batch: PoloBatch, *, active_polo: str | None) -> list[dict]:
+    base = url_for("main.dashboard", upload_id=upload_id)
+    tabs = [
+        {
+            "label": "Todos",
+            "href": f"{base}?polo=__all",
+            "active": active_polo in (None, "__all"),
+        }
+    ]
+    for polo in batch.polos:
+        tabs.append(
+            {
+                "label": polo.title(),
+                "href": f"{base}?polo={polo}",
+                "active": active_polo == polo,
+            }
+        )
+    return tabs
+
+
 def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
     batch = load_batch(batch_dir)
     available_polos = batch.polos
@@ -137,6 +199,9 @@ def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
     context.update(
         {
             "download_action": url_for("main.download", upload_id=upload_id),
+            "tabs": _build_tabs(upload_id, batch, active_polo="__all"),
+            "active_polo": "__all",
+            "polo_query": "polo=__all",
             "available_polos": available_polos,
             "selected_polos": list(selected_polos),
             "available_weeks": available_weeks,
@@ -260,7 +325,7 @@ def team_detail(upload_id: str) -> str:
     )
 
 
-_SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx"}
+_SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx", "pptx"}
 _BATCH_FORMATS = {"md", "xlsx", "html"}
 
 
@@ -270,6 +335,22 @@ def download(upload_id: str) -> Response:
 
     kind, target = _resolve_upload(upload_id)
     if kind == "batch":
+        polo_arg = request.args.get("polo")
+        if polo_arg and polo_arg != "__all":
+            if fmt not in _SUPPORTED_FORMATS:
+                abort(400)
+            path = _batch_polo_path(target, polo_arg)
+            workbook = load_workbook(path, data_only=True, read_only=True)
+            template = recognize(workbook.sheetnames)
+            if not isinstance(template, PimentasTemplate):
+                abort(404)
+            body, mimetype = render_export(fmt, template, workbook, path)
+            response = Response(body, mimetype=mimetype)
+            response.headers["Content-Disposition"] = (
+                f'attachment; filename="dashboard-{polo_arg}-{upload_id[:8]}.{fmt}"'
+            )
+            return response
+
         if fmt not in _BATCH_FORMATS:
             abort(501)
         return _download_batch(upload_id, target, fmt)

@@ -7,3 +7,5 @@ plotly>=5.20,<7
 matplotlib>=3.8,<4
 reportlab>=4.0,<5
 python-docx>=1.1,<2
+python-pptx>=1.0,<2
+kaleido>=1.0,<2

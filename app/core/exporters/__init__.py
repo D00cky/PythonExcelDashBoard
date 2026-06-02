@@ -11,6 +11,7 @@ _MIMETYPES = {
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "pdf": "application/pdf",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
 
 
@@ -36,6 +37,10 @@ def render_export(
         from app.core.exporters.docx import render_docx
 
         body = render_docx(template, workbook, path)
+    elif fmt == "pptx":
+        from app.core.exporters.pptx import render_pptx
+
+        body = render_pptx(template, workbook, path)
     else:
         raise ValueError(f"unsupported format: {fmt}")
     return body, _MIMETYPES[fmt]
