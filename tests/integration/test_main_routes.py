@@ -223,6 +223,33 @@ def test_batch_download_xlsx_is_workbook(client, tmp_path):
     assert response.data[:2] == b"PK"
 
 
+def test_batch_download_docx_combined(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?fmt=docx&view=weekly&period=2026-W19")
+
+    assert response.status_code == 200
+    assert "wordprocessingml" in response.mimetype
+    assert response.data[:2] == b"PK"
+    # The docx XML should mention both Polos in the combined view.
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(response.data)) as zf:
+        document_xml = zf.read("word/document.xml").decode("utf-8")
+    assert "PIMENTAS" in document_xml.upper()
+    assert "SANTANA" in document_xml.upper()
+
+
+def test_batch_download_pdf_combined(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?fmt=pdf&view=weekly&period=2026-W19")
+
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data[:4] == b"%PDF"
+
+
 def test_batch_dashboard_renders_polo_tabs(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 

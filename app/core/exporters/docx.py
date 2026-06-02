@@ -1,32 +1,68 @@
 from io import BytesIO
 from pathlib import Path
 
+import pandas as pd
 from docx import Document
 from docx.shared import Pt, RGBColor
 from openpyxl.workbook import Workbook
 
-from app.core.templates.pimentas import PimentasTemplate
+from app.core.templates.pimentas import PimentasTemplate, ServiceIC, ServiceIQS
 
 
 def render_docx(template: PimentasTemplate, workbook: Workbook, path: Path) -> bytes:
     inspections = template.extract_inspections(path)
-    iqs_rows = template.extract_iqs_by_service(workbook)
-    ic_rows = template.extract_ic_by_service(workbook)
-    iqs_overall = template.extract_iqs_overall(workbook)
-    periodo = _periodo(inspections) or template.extract_periodo(workbook)
+    return render_docx_from_data(
+        polo_label=template.polo_name.title(),
+        periodo=_periodo(inspections) or template.extract_periodo(workbook),
+        iqs_overall=template.extract_iqs_overall(workbook),
+        iqs_rows=template.extract_iqs_by_service(workbook),
+        ic_rows=template.extract_ic_by_service(workbook),
+        inspections=inspections,
+        services=sorted(template.SERVICE_SHEETS),
+    )
 
+
+def render_docx_from_data(
+    *,
+    polo_label: str,
+    periodo: str | None,
+    iqs_overall: float | None,
+    iqs_rows: list[ServiceIQS],
+    ic_rows: list[ServiceIC],
+    inspections: pd.DataFrame,
+    services: list[str],
+    polos_included: list[str] | None = None,
+) -> bytes:
     doc = Document()
-    title = doc.add_heading(f"Dashboard — Polo {template.polo_name.title()}", level=0)
+    title = doc.add_heading(f"Dashboard — Polo {polo_label}", level=0)
     for run in title.runs:
         run.font.color.rgb = RGBColor(0x26, 0x46, 0x53)
 
     if periodo:
         doc.add_paragraph().add_run(f"Período: {periodo}").bold = True
+    if polos_included:
+        doc.add_paragraph().add_run(f"Polos incluídos: {', '.join(polos_included)}").bold = True
     if iqs_overall is not None:
         doc.add_paragraph().add_run(f"IQS Geral: {iqs_overall:.1%}").bold = True
     if not inspections.empty:
         doc.add_paragraph(f"Total de inspeções: {len(inspections)}")
         doc.add_paragraph(f"Equipes distintas: {inspections['team'].nunique()}")
+
+    # Per-Polo summary table when polos_included contains > 1 entry
+    if polos_included and len(polos_included) > 1 and "polo" in inspections.columns:
+        doc.add_heading("Resumo por Polo", level=1)
+        per_polo_rows = []
+        for polo in polos_included:
+            sub = inspections[inspections["polo"] == polo]
+            per_polo_rows.append(
+                [
+                    polo,
+                    str(len(sub)),
+                    str(int(sub["conforme_count"].sum())) if not sub.empty else "0",
+                    str(int(sub["nao_conforme_count"].sum())) if not sub.empty else "0",
+                ]
+            )
+        _table(doc, ["Polo", "Inspeções", "Conforme", "Não Conforme"], per_polo_rows)
 
     if ic_rows:
         doc.add_heading("Índice de Conformidade por Serviço", level=1)
@@ -55,7 +91,7 @@ def render_docx(template: PimentasTemplate, workbook: Workbook, path: Path) -> b
         )
 
     if not inspections.empty:
-        for service in sorted(template.SERVICE_SHEETS):
+        for service in services:
             sub = inspections[inspections["service"] == service]
             if sub.empty:
                 continue

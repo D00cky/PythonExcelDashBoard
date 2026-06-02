@@ -404,7 +404,7 @@ def team_detail(upload_id: str) -> str:
 
 
 _SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx", "pptx"}
-_BATCH_FORMATS = {"md", "xlsx", "html"}
+_BATCH_FORMATS = {"md", "xlsx", "html", "docx", "pdf"}
 
 
 @bp.get("/download/<upload_id>")

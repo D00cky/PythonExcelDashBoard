@@ -28,6 +28,8 @@ _BATCH_MIMETYPES = {
     "md": "text/markdown; charset=utf-8",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "html": "text/html; charset=utf-8",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "pdf": "application/pdf",
 }
 
 
@@ -54,7 +56,38 @@ def render_batch_export(fmt: str, batch: PoloBatch, selection: BatchSelection) -
         body = _render_xlsx(filtered, selection, inspections, failures)
     elif fmt == "html":
         body = _render_html(filtered, selection, inspections)
+    elif fmt == "docx":
+        body = _render_docx(selection, inspections)
+    elif fmt == "pdf":
+        body = _render_pdf(selection, inspections)
     return body, _BATCH_MIMETYPES[fmt]
+
+
+def _build_payload_kwargs(selection: BatchSelection, inspections: pd.DataFrame) -> dict:
+    template = PimentasTemplate()
+    services = sorted(template.SERVICE_SHEETS)
+    return dict(
+        polo_label=_polo_label(selection),
+        periodo=_periodo_label(inspections, selection),
+        iqs_overall=iqs_overall_from_inspections(inspections),
+        iqs_rows=iqs_rows_from_inspections(inspections, services),
+        ic_rows=ic_rows_from_inspections(inspections, services),
+        inspections=inspections,
+        services=services,
+        polos_included=[p for p in selection.polos],
+    )
+
+
+def _render_docx(selection: BatchSelection, inspections: pd.DataFrame) -> bytes:
+    from app.core.exporters.docx import render_docx_from_data
+
+    return render_docx_from_data(**_build_payload_kwargs(selection, inspections))
+
+
+def _render_pdf(selection: BatchSelection, inspections: pd.DataFrame) -> bytes:
+    from app.core.exporters.pdf import render_pdf_from_data
+
+    return render_pdf_from_data(**_build_payload_kwargs(selection, inspections))
 
 
 def _polo_label(selection: BatchSelection) -> str:
