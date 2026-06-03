@@ -151,10 +151,49 @@ class TestDiscoverPoloFile:
         with pytest.raises(ValueError, match="template"):
             discover_polo_file(path)
 
-    def test_raises_when_periodo_cell_empty(self, tmp_path: Path) -> None:
-        path = make_minimal_pimentas(tmp_path, with_periodo=False)
-        with pytest.raises(ValueError, match="periodo|período"):
+    def test_raises_when_no_periodo_and_no_dated_inspections(self, tmp_path: Path) -> None:
+        # No B4 periodo and with_inspections=False so neither fallback path yields dates.
+        path = make_minimal_pimentas(tmp_path, with_periodo=False, with_inspections=False)
+        with pytest.raises(ValueError, match="no dated inspections|empty B4|periodo|período"):
             discover_polo_file(path)
+
+    def test_inspections_dates_override_stale_b4(self, tmp_path: Path) -> None:
+        """When B4 lies (cloned-from-last-month xlsx) and inspections carry real
+        dates, the inspections-derived period must win — otherwise the period
+        dropdown shows the wrong week and breaks per-period filtering. This is
+        the core bug fix that landed the 'inspections-first' rule."""
+        # B4 says March 1–31; fixture's inspections span 2026-03-05 to 2026-03-29.
+        # To prove inspections win, override B4 with a wildly different month —
+        # if the result still tracks the inspection dates, the override is honored.
+        path = make_minimal_pimentas(
+            tmp_path,
+            polo="PIMENTAS",
+            periodo="Período: 01/12/2025 à 31/12/2025",  # December — way off
+            with_inspections=True,
+        )
+
+        pf = discover_polo_file(path)
+
+        # Inspection rows (Mar 5 → Mar 29 2026) → iso_week W10, month 2026-03.
+        assert pf.period_start == date(2026, 3, 5)
+        assert pf.period_end == date(2026, 3, 29)
+        assert pf.iso_week == "2026-W10"
+        assert pf.month == "2026-03"
+
+    def test_falls_back_to_b4_when_no_dated_inspections(self, tmp_path: Path) -> None:
+        # No inspection rows → B4 is the only source.
+        path = make_minimal_pimentas(
+            tmp_path,
+            polo="PIMENTAS",
+            periodo="Período: 04/05/2026 à 10/05/2026",
+            with_inspections=False,
+        )
+
+        pf = discover_polo_file(path)
+
+        assert pf.period_start == date(2026, 5, 4)
+        assert pf.period_end == date(2026, 5, 10)
+        assert pf.iso_week == "2026-W19"
 
 
 @pytest.fixture
@@ -209,15 +248,17 @@ class TestCombinedStageFailures:
 
 
 class TestFilterBatch:
+    # The fixture's inspection rows span 2026-03-05 to 2026-03-29 — iso_week W10
+    # and month 2026-03 — and inspections-derived dates win over the May B4.
     def test_filter_by_polos_weekly(self, two_polo_batch: PoloBatch) -> None:
         filtered = filter_batch(
-            two_polo_batch, polos=("PIMENTAS",), view="weekly", period_key="2026-W19"
+            two_polo_batch, polos=("PIMENTAS",), view="weekly", period_key="2026-W10"
         )
         assert [f.polo for f in filtered.files] == ["PIMENTAS"]
 
     def test_filter_by_month_keeps_all_weeks_in_month(self, two_polo_batch: PoloBatch) -> None:
         filtered = filter_batch(
-            two_polo_batch, polos=("PIMENTAS", "SANTANA"), view="monthly", period_key="2026-05"
+            two_polo_batch, polos=("PIMENTAS", "SANTANA"), view="monthly", period_key="2026-03"
         )
         assert {f.polo for f in filtered.files} == {"PIMENTAS", "SANTANA"}
 

@@ -74,21 +74,55 @@ class PoloBatch:
         return sorted({f.month for f in self.files})
 
 
+def _period_from_inspections(
+    template: PimentasTemplate, xlsx_path: Path
+) -> tuple[date, date] | None:
+    """Authoritative period from the inspections' ``start_date`` column.
+
+    Returns ``None`` when no dated rows are present — the caller falls back to
+    B4. We prefer this over B4 because users frequently clone last week's xlsx
+    and forget to update the period cell, while the inspection-row dates are
+    typed in fresh each cycle.
+    """
+    inspections = template.extract_inspections(xlsx_path)
+    if "start_date" not in inspections.columns:
+        return None
+    dates = inspections["start_date"].dropna()
+    if dates.empty:
+        return None
+    return dates.min().date(), dates.max().date()
+
+
 def discover_polo_file(xlsx_path: Path) -> PoloFile:
     """Open an xlsx, detect its Polo template, and return a manifest entry.
 
+    The period (start, end, iso_week, month) is derived from the inspections'
+    ``start_date`` column when that column has any rows; otherwise we fall back
+    to the B4 period cell. B4 lies often enough (cloned-from-last-week xlsx)
+    that trusting it unconditionally surfaces as bug reports like "shows March
+    for a May file".
+
     Raises ``ValueError`` if the workbook does not match any known template or
-    if the period cell is empty/unparseable.
+    if neither inspections nor B4 yield a parseable period.
     """
     workbook = load_workbook(xlsx_path, data_only=True, read_only=True)
     try:
         template = recognize(workbook.sheetnames)
         if template is None:
             raise ValueError(f"unknown template in {xlsx_path.name}")
-        raw = template.extract_periodo(workbook)
-        if not raw:
-            raise ValueError(f"empty periodo cell in {xlsx_path.name}")
-        start, end, iso_week, month = parse_periodo(raw)
+
+        inspections_period = _period_from_inspections(template, xlsx_path)
+        if inspections_period is not None:
+            start, end = inspections_period
+        else:
+            raw = template.extract_periodo(workbook)
+            if not raw:
+                raise ValueError(f"no dated inspections and empty B4 in {xlsx_path.name}")
+            start, end, _, _ = parse_periodo(raw)
+
+        iso_year, iso_wk, _ = start.isocalendar()
+        iso_week = f"{iso_year:04d}-W{iso_wk:02d}"
+        month = f"{start.year:04d}-{start.month:02d}"
         return PoloFile(
             file_path=xlsx_path,
             polo=template.polo_name,
