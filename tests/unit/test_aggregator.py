@@ -1,6 +1,7 @@
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from app.core.aggregator import (
@@ -11,13 +12,55 @@ from app.core.aggregator import (
     combined_iqs_overall,
     combined_iqs_rows,
     combined_stage_failures,
+    date_bounds,
     discover_polo_file,
     filter_batch,
+    format_period_pt,
     load_batch,
     parse_periodo,
     write_manifest,
 )
 from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+
+class TestDateBounds:
+    def test_returns_min_max_of_start_date_column(self) -> None:
+        df = pd.DataFrame(
+            {"start_date": pd.to_datetime(["2026-03-05", "2026-03-29", "2026-03-12"])}
+        )
+        bounds = date_bounds(df)
+        assert bounds is not None
+        start, end = bounds
+        assert start == pd.Timestamp("2026-03-05")
+        assert end == pd.Timestamp("2026-03-29")
+
+    def test_returns_none_when_dataframe_empty(self) -> None:
+        assert date_bounds(pd.DataFrame()) is None
+
+    def test_returns_none_when_start_date_column_absent(self) -> None:
+        assert date_bounds(pd.DataFrame({"foo": [1, 2, 3]})) is None
+
+    def test_returns_none_when_all_dates_nat(self) -> None:
+        df = pd.DataFrame({"start_date": [pd.NaT, pd.NaT]})
+        assert date_bounds(df) is None
+
+    def test_ignores_nat_rows_when_some_are_valid(self) -> None:
+        df = pd.DataFrame(
+            {"start_date": [pd.NaT, pd.Timestamp("2026-05-04"), pd.Timestamp("2026-05-10")]}
+        )
+        bounds = date_bounds(df)
+        assert bounds == (pd.Timestamp("2026-05-04"), pd.Timestamp("2026-05-10"))
+
+
+class TestFormatPeriodPt:
+    def test_renders_dd_mm_yyyy_label(self) -> None:
+        bounds = (pd.Timestamp("2026-03-05"), pd.Timestamp("2026-03-29"))
+        assert format_period_pt(bounds) == "05/03/2026 à 29/03/2026"
+
+    def test_returns_none_for_none_input_so_callers_can_chain(self) -> None:
+        # Designed so consumers can write: format_period_pt(date_bounds(df))
+        # and propagate the empty case in one shot.
+        assert format_period_pt(None) is None
 
 
 def _file(tmp_path: Path, name: str = "f.xlsx", polo: str = "PIMENTAS") -> PoloFile:

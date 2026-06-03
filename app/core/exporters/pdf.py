@@ -15,6 +15,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from app.core.aggregator import date_bounds, format_period_pt
 from app.core.templates.pimentas import PimentasTemplate, ServiceIC, ServiceIQS
 
 
@@ -22,7 +23,7 @@ def render_pdf(template: PimentasTemplate, workbook: Workbook, path: Path) -> by
     inspections = template.extract_inspections(path)
     return render_pdf_from_data(
         polo_label=template.polo_name.title(),
-        periodo=_periodo(inspections) or template.extract_periodo(workbook),
+        periodo=format_period_pt(date_bounds(inspections)) or template.extract_periodo(workbook),
         iqs_overall=template.extract_iqs_overall(workbook),
         iqs_rows=template.extract_iqs_by_service(workbook),
         ic_rows=template.extract_ic_by_service(workbook),
@@ -178,12 +179,3 @@ def _table(headers: list[str], rows: list[list[str]]) -> Table:
         )
     )
     return t
-
-
-def _periodo(df) -> str | None:
-    if df.empty or "start_date" not in df.columns:
-        return None
-    dates = df["start_date"].dropna()
-    if dates.empty:
-        return None
-    return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"

@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 from docxtpl import DocxTemplate
 
+from app.core.aggregator import date_bounds
 from app.core.templates.pimentas import PimentasTemplate
 
 _SKELETON_DIR = Path(__file__).resolve().parent.parent / "templates" / "docx_skeletons"
@@ -180,13 +181,10 @@ def _period_fields(inspections: pd.DataFrame) -> tuple[str, str, str, str]:
     the Sabesp templates expect *something* in those fields, blanking them looks
     broken to a reviewer, but a clearly-empty value is still better than 1970/1/1.
     """
-    if "start_date" not in inspections.columns:
+    bounds = date_bounds(inspections)
+    if bounds is None:
         return "", "", "", ""
-    dates = inspections["start_date"].dropna()
-    if dates.empty:
-        return "", "", "", ""
-    start = dates.min()
-    end = dates.max()
+    start, end = bounds
     return (
         f"{start:%d/%m/%Y}",
         f"{end:%d/%m/%Y}",

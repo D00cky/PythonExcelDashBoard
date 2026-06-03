@@ -21,8 +21,10 @@ from app.core.aggregator import (
     PoloBatch,
     combined_inspections,
     combined_stage_failures,
+    date_bounds,
     discover_polo_file,
     filter_batch,
+    format_period_pt,
     load_batch,
     write_manifest,
 )
@@ -280,7 +282,7 @@ def _build_batch_context(
     ic_rows = _ic_rows_from_inspections(inspections, services)
     iqs_overall = _iqs_overall_from_inspections(inspections)
 
-    periodo = _periodo_from_inspections(inspections)
+    periodo = format_period_pt(date_bounds(inspections))
     teams_sorted = (
         sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
     )
@@ -573,15 +575,6 @@ def _resolve_upload(upload_id: str) -> tuple[str, Path]:
     abort(404)
 
 
-def _periodo_from_inspections(df) -> str | None:
-    if df.empty or "start_date" not in df.columns:
-        return None
-    dates = df["start_date"].dropna()
-    if dates.empty:
-        return None
-    return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"
-
-
 def _parse_iso_date(value: str) -> pd.Timestamp | None:
     """Parse YYYY-MM-DD from an <input type=date>; return None when invalid."""
     if not value:
@@ -639,7 +632,7 @@ def _build_polo_context(
         ic_rows = template.extract_ic_by_service(workbook)
         iqs_overall = template.extract_iqs_overall(workbook)
 
-    periodo = _periodo_from_inspections(inspections) or template.extract_periodo(workbook)
+    periodo = format_period_pt(date_bounds(inspections)) or template.extract_periodo(workbook)
     teams_sorted = (
         sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
     )

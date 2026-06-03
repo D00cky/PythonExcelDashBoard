@@ -5,6 +5,7 @@ from openpyxl import Workbook as NewWorkbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.workbook import Workbook
 
+from app.core.aggregator import date_bounds, format_period_pt
 from app.core.templates.pimentas import PimentasTemplate
 
 _HEADER_FILL = PatternFill("solid", fgColor="264653")
@@ -16,7 +17,7 @@ def render_xlsx(template: PimentasTemplate, workbook: Workbook, path: Path) -> b
     iqs_rows = template.extract_iqs_by_service(workbook)
     ic_rows = template.extract_ic_by_service(workbook)
     iqs_overall = template.extract_iqs_overall(workbook)
-    periodo = _periodo(inspections) or template.extract_periodo(workbook)
+    periodo = format_period_pt(date_bounds(inspections)) or template.extract_periodo(workbook)
 
     wb = NewWorkbook()
     _write_summary(
@@ -108,12 +109,3 @@ def _write_table(ws, *, headers, rows, pct_cols: set[int] | None = None):
     for c in range(1, len(headers) + 1):
         col_letter = ws.cell(row=1, column=c).column_letter
         ws.column_dimensions[col_letter].width = max(18, len(str(headers[c - 1])) + 4)
-
-
-def _periodo(df) -> str | None:
-    if df.empty or "start_date" not in df.columns:
-        return None
-    dates = df["start_date"].dropna()
-    if dates.empty:
-        return None
-    return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"

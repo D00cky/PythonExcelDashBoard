@@ -74,6 +74,30 @@ class PoloBatch:
         return sorted({f.month for f in self.files})
 
 
+def date_bounds(df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp] | None:
+    """Min/max of the inspections' ``start_date`` column, or ``None`` when the
+    column is absent or has no dated rows. The single source-of-truth for the
+    "what dates are in this dataframe" question — every exporter and route used
+    to inline this pattern.
+    """
+    if df.empty or "start_date" not in df.columns:
+        return None
+    dates = df["start_date"].dropna()
+    if dates.empty:
+        return None
+    return dates.min(), dates.max()
+
+
+def format_period_pt(bounds: tuple[pd.Timestamp, pd.Timestamp] | None) -> str | None:
+    """Render a date-bounds tuple as the pt-BR period label ``"dd/mm/yyyy à
+    dd/mm/yyyy"``. Returns ``None`` for ``None`` input so callers can chain
+    ``format_period_pt(date_bounds(df))`` and propagate the missing-data sentinel."""
+    if bounds is None:
+        return None
+    start, end = bounds
+    return f"{start:%d/%m/%Y} à {end:%d/%m/%Y}"
+
+
 def _period_from_inspections(
     template: PimentasTemplate, xlsx_path: Path
 ) -> tuple[date, date] | None:
@@ -84,13 +108,10 @@ def _period_from_inspections(
     and forget to update the period cell, while the inspection-row dates are
     typed in fresh each cycle.
     """
-    inspections = template.extract_inspections(xlsx_path)
-    if "start_date" not in inspections.columns:
+    bounds = date_bounds(template.extract_inspections(xlsx_path))
+    if bounds is None:
         return None
-    dates = inspections["start_date"].dropna()
-    if dates.empty:
-        return None
-    return dates.min().date(), dates.max().date()
+    return bounds[0].date(), bounds[1].date()
 
 
 def discover_polo_file(xlsx_path: Path) -> PoloFile:

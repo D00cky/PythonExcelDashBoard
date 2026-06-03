@@ -2,6 +2,7 @@ from pathlib import Path
 
 from openpyxl.workbook import Workbook
 
+from app.core.aggregator import date_bounds, format_period_pt
 from app.core.templates.pimentas import PimentasTemplate
 
 
@@ -14,7 +15,7 @@ def render_markdown(template: PimentasTemplate, workbook: Workbook, path: Path) 
     lines.append(f"# Dashboard — Polo {template.polo_name.title()}")
     lines.append("")
 
-    periodo = _periodo(inspections) or template.extract_periodo(workbook)
+    periodo = format_period_pt(date_bounds(inspections)) or template.extract_periodo(workbook)
     if periodo:
         lines.append(f"**Período**: {periodo}")
     iqs_overall = template.extract_iqs_overall(workbook)
@@ -66,12 +67,3 @@ def render_markdown(template: PimentasTemplate, workbook: Workbook, path: Path) 
             lines.append("")
 
     return "\n".join(lines)
-
-
-def _periodo(df) -> str | None:
-    if df.empty or "start_date" not in df.columns:
-        return None
-    dates = df["start_date"].dropna()
-    if dates.empty:
-        return None
-    return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"

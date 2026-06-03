@@ -17,7 +17,9 @@ from app.core.aggregator import (
     PoloBatch,
     combined_inspections,
     combined_stage_failures,
+    date_bounds,
     filter_batch,
+    format_period_pt,
     ic_rows_from_inspections,
     iqs_overall_from_inspections,
     iqs_rows_from_inspections,
@@ -97,11 +99,7 @@ def _polo_label(selection: BatchSelection) -> str:
 
 
 def _periodo_label(inspections: pd.DataFrame, selection: BatchSelection) -> str:
-    if not inspections.empty and "start_date" in inspections.columns:
-        dates = inspections["start_date"].dropna()
-        if not dates.empty:
-            return f"{dates.min():%d/%m/%Y} à {dates.max():%d/%m/%Y}"
-    return selection.period_key
+    return format_period_pt(date_bounds(inspections)) or selection.period_key
 
 
 def _render_markdown(
