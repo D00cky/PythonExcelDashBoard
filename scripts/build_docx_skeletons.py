@@ -123,6 +123,113 @@ def _iter_cell_paragraphs(cell: _Cell):
                 yield from _iter_cell_paragraphs(inner_cell)
 
 
+def _find_paragraph_starting_with(paragraphs, prefix: str):
+    return next((p for p in paragraphs if p.text.startswith(prefix)), None)
+
+
+def wrap_equipe_block(doc: DocxDocument) -> int:
+    """Turn the EQUIPE I/III/IV listing into a docxtpl paragraph loop.
+
+    Source layout (after cycle-1 substitutions) is three List Paragraphs:
+      EQUIPE I  – Tecnólogo Lucas Jeremias
+      EQUIPE III – Engenheira Geovana ...
+      EQUIPE IV – Engenheiro Evanuel ...
+      ASSISTENTES TÉCNICOS – ...
+
+    We keep the first as the loop body (preserving the bold "EQUIPE X" run),
+    delete the other two, and wrap with ``{%p for m in equipe %}`` /
+    ``{%p endfor %}`` directive paragraphs. ASSISTENTES stays as static text.
+    Returns 1 on success, 0 if the anchor wasn't found (template already wrapped).
+    """
+    anchor = _find_paragraph_starting_with(doc.paragraphs, "EQUIPE I")
+    if anchor is None:
+        return 0
+
+    anchor.insert_paragraph_before("{%p for m in equipe %}", style=anchor.style)
+
+    # Body: keep run[0] bold "EQUIPE {{ m.id }}", run[1] normal
+    # " – {{ m.role }} {{ m.name }}", blank the rest.
+    runs = anchor.runs
+    if runs:
+        runs[0].text = "EQUIPE {{ m.id }}"
+        if len(runs) > 1:
+            runs[1].text = " – {{ m.role }} {{ m.name }}"
+        for r in runs[2:]:
+            r.text = ""
+
+    # Delete EQUIPE III / EQUIPE IV — text-anchored so a reorder in the source
+    # won't silently produce a malformed skeleton.
+    for p in list(doc.paragraphs):
+        if p.text.startswith(("EQUIPE III", "EQUIPE IV")):
+            p._element.getparent().remove(p._element)
+
+    assistentes = _find_paragraph_starting_with(doc.paragraphs, "ASSISTENTES TÉCNICOS")
+    if assistentes is not None:
+        assistentes.insert_paragraph_before("{%p endfor %}", style=anchor.style)
+    return 1
+
+
+def wrap_indice_tecnologico_table(doc: DocxDocument) -> int:
+    """Turn the ÍNDICE TECNOLÓGICO POR EQUIPE table body into a docxtpl row loop.
+
+    Per docxtpl's row-loop convention, the ``{%tr for %}`` / ``{%tr endfor %}``
+    directives must sit in *separate* rows surrounding the body row — putting both
+    on a single row makes docxtpl's `<w:tr>` boundary rewrite fail and Jinja then
+    sees a dangling ``endfor``.
+
+    Layout produced:
+      row 0-2: existing header rows (unchanged)
+      row 3:   {%tr for r in indice %}   (directive row — removed at render time)
+      row 4:   body row with {{ r.* }} Jinja expressions (repeated for each item)
+      row 5:   {%tr endfor %}            (directive row — removed at render time)
+    Surplus original data rows are deleted. Returns 1 on success, 0 if the table
+    wasn't found.
+    """
+    import copy
+
+    HEADER_ROWS = 3
+    target = next(
+        (
+            t
+            for t in doc.tables
+            if t.rows
+            and t.rows[0].cells[0].text.strip().startswith("ÍNDICE TECNOLÓGICO POR EQUIPE")
+        ),
+        None,
+    )
+    if target is None or len(target.rows) <= HEADER_ROWS:
+        return 0
+
+    body_row = target.rows[HEADER_ROWS]
+
+    # Drop surplus original data rows first so insertion indices stay simple.
+    for row in list(target.rows[HEADER_ROWS + 1 :]):
+        target._tbl.remove(row._tr)
+
+    # Body row: Jinja expressions only, no directives.
+    body = body_row.cells
+    body[0].text = "{{ r.equipe }}"
+    body[1].text = "{{ r.servico }}"
+    body[2].text = "{{ r.quantidade }}"
+    body[3].text = "{{ r.ic_pct_str }}"
+
+    # Insert {%tr for %} directive row immediately before the body row.
+    body_row._tr.addprevious(copy.deepcopy(body_row._tr))
+    for_row = target.rows[HEADER_ROWS]
+    for c in for_row.cells:
+        c.text = ""
+    for_row.cells[0].text = "{%tr for r in indice %}"
+
+    # Insert {%tr endfor %} directive row immediately after the body row.
+    body_row = target.rows[HEADER_ROWS + 1]  # body row shifted by one
+    body_row._tr.addnext(copy.deepcopy(body_row._tr))
+    endfor_row = target.rows[HEADER_ROWS + 2]
+    for c in endfor_row.cells:
+        c.text = ""
+    endfor_row.cells[0].text = "{%tr endfor %}"
+    return 1
+
+
 def build_mensal_skeleton(source: Path, target: Path) -> dict[str, int]:
     if not source.exists():
         raise FileNotFoundError(f"source docx not found: {source}")
@@ -133,6 +240,8 @@ def build_mensal_skeleton(source: Path, target: Path) -> dict[str, int]:
         for paragraph in iter_paragraphs(doc):
             n += replace_in_paragraph(paragraph, anchor, placeholder)
         counts[anchor] = n
+    counts["<equipe loop>"] = wrap_equipe_block(doc)
+    counts["<indice table loop>"] = wrap_indice_tecnologico_table(doc)
     target.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(target))
     return counts

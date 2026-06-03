@@ -628,6 +628,15 @@ def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):
     assert "Gopoúva" not in text
     # No unrendered Jinja markers.
     assert "{{" not in text
+    # ÍNDICE TECNOLÓGICO POR EQUIPE is populated from the fixture's inspections
+    # (group by team + service). Fixture has 3 teams × 2 services, so at least
+    # one fixture team name must appear as a body row.
+    indice_table = next(t for t in doc.tables if "ÍNDICE TECNOLÓGICO" in t.rows[0].cells[0].text)
+    assert len(indice_table.rows) >= 4  # 3 headers + at least 1 data row
+    data_text = "\n".join(cell.text for row in indice_table.rows[3:] for cell in row.cells)
+    assert "JOSIAS ALMEIDA FRANCISCO".title() in data_text
+    # ASSISTENTES line is static — present even when equipe is empty.
+    assert "ASSISTENTES TÉCNICOS" in text
 
 
 def test_docx_skeleton_route_serves_raw_template(client):

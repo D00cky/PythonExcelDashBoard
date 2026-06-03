@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 
+import pandas as pd
 from docxtpl import DocxTemplate
 
 from app.core.templates.pimentas import PimentasTemplate
@@ -37,6 +38,33 @@ _MONTH_PT = {
 
 
 @dataclass(frozen=True)
+class EquipeMember:
+    """One row in the auditing-team listing (Sondotécnica auditors, not field crews).
+
+    The xlsx doesn't carry this org chart, so callers either supply it explicitly
+    or accept an empty list (loop renders zero entries, ASSISTENTES stays static).
+    """
+
+    id: str  # e.g. "I", "III", "IV"
+    role: str  # e.g. "Tecnólogo", "Engenheira"
+    name: str  # e.g. "Lucas Jeremias"
+
+
+@dataclass(frozen=True)
+class IndiceRow:
+    """One row of the ÍNDICE TECNOLÓGICO POR EQUIPE table.
+
+    ``ic_pct_str`` is pre-formatted in pt-BR (decimal comma, two places) because the
+    Sabesp standard uses that locale and docxtpl templates can't easily format inline.
+    """
+
+    equipe: str
+    servico: str
+    quantidade: int
+    ic_pct_str: str
+
+
+@dataclass(frozen=True)
 class MensalContext:
     """Inputs the Sabesp Mensal skeleton expects bound. Frozen so callers can't
     silently extend the contract without updating the skeleton at the same time."""
@@ -46,12 +74,15 @@ class MensalContext:
     periodo_fim: str  # dd/mm/yyyy
     mes_extenso: str  # e.g. "Abril"
     ano: str  # e.g. "2026"
+    equipe: tuple[EquipeMember, ...] = ()
+    indice_tecnologico: tuple[IndiceRow, ...] = ()
 
     @property
     def polo_label_upper(self) -> str:
         return self.polo_label.upper()
 
-    def as_render_dict(self) -> dict[str, str]:
+    def as_render_dict(self) -> dict[str, object]:
+        # Skeleton uses ``indice`` as the loop variable, so the dict key must match.
         return {
             "polo_label": self.polo_label,
             "polo_label_upper": self.polo_label_upper,
@@ -59,6 +90,8 @@ class MensalContext:
             "periodo_fim": self.periodo_fim,
             "mes_extenso": self.mes_extenso,
             "ano": self.ano,
+            "equipe": list(self.equipe),
+            "indice": list(self.indice_tecnologico),
         }
 
 
@@ -70,11 +103,50 @@ def render_mensal(context: MensalContext, *, skeleton: Path = SKELETON_PATH) -> 
     return buf.getvalue()
 
 
-def context_from_template(template: PimentasTemplate, path: Path) -> MensalContext:
+def indice_rows_from_inspections(inspections: pd.DataFrame) -> tuple[IndiceRow, ...]:
+    """Aggregate inspections into (team × service) IC% rows for the tecnológico table.
+
+    A row is dropped when neither conforme nor não-conforme inspections exist for that
+    (team, service) — those are zero-quantity entries that would clutter the table.
+    """
+    required = {"team", "service", "conforme_count", "nao_conforme_count"}
+    if inspections.empty or not required.issubset(inspections.columns):
+        return ()
+    grouped = inspections.groupby(["team", "service"], dropna=True).agg(
+        conforme=("conforme_count", "sum"),
+        nao_conforme=("nao_conforme_count", "sum"),
+    )
+    rows: list[IndiceRow] = []
+    for (team, service), agg in grouped.iterrows():
+        conforme = int(agg["conforme"])
+        nao_conforme = int(agg["nao_conforme"])
+        total = conforme + nao_conforme
+        if total == 0:
+            continue
+        ic_pct = (conforme / total) * 100
+        rows.append(
+            IndiceRow(
+                equipe=str(team).title() if isinstance(team, str) else str(team),
+                servico=str(service).title() if isinstance(service, str) else str(service),
+                quantidade=total,
+                ic_pct_str=f"{ic_pct:.2f}".replace(".", ","),
+            )
+        )
+    return tuple(rows)
+
+
+def context_from_template(
+    template: PimentasTemplate,
+    path: Path,
+    *,
+    equipe: tuple[EquipeMember, ...] = (),
+) -> MensalContext:
     """Build a MensalContext from a PimentasTemplate + the uploaded xlsx path.
 
-    Falls back to safe placeholders when the workbook lacks dated inspections (the
-    Sabesp report needs *something* in those fields, blanking them would look broken).
+    ``equipe`` defaults to empty because the xlsx doesn't carry the audit-team org
+    chart — callers can override it. Falls back to safe placeholders when the
+    workbook lacks dated inspections (the Sabesp report needs *something* in those
+    fields, blanking them would look broken).
     """
     inspections = template.extract_inspections(path)
     dates = inspections["start_date"].dropna() if "start_date" in inspections.columns else None
@@ -96,4 +168,6 @@ def context_from_template(template: PimentasTemplate, path: Path) -> MensalConte
         periodo_fim=periodo_fim,
         mes_extenso=mes_extenso,
         ano=ano,
+        equipe=equipe,
+        indice_tecnologico=indice_rows_from_inspections(inspections),
     )
