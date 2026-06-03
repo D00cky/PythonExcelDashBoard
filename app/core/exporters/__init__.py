@@ -20,6 +20,8 @@ def render_export(
     template: "PimentasTemplate",
     workbook: Workbook,
     path: Path,
+    *,
+    style: str | None = None,
 ) -> tuple[bytes, str]:
     if fmt == "md":
         from app.core.exporters.markdown import render_markdown
@@ -34,9 +36,14 @@ def render_export(
 
         body = render_pdf(template, workbook, path)
     elif fmt == "docx":
-        from app.core.exporters.docx import render_docx
+        if style == "sabesp_mensal":
+            from app.core.exporters.docx_sabesp import context_from_template, render_mensal
 
-        body = render_docx(template, workbook, path)
+            body = render_mensal(context_from_template(template, path))
+        else:
+            from app.core.exporters.docx import render_docx
+
+            body = render_docx(template, workbook, path)
     elif fmt == "pptx":
         from app.core.exporters.pptx import render_pptx
 

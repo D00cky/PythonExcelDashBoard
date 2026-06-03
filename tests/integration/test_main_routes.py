@@ -597,6 +597,54 @@ def test_download_docx_returns_office_document(client, tmp_path):
     assert response.data[:2] == b"PK"
 
 
+def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):
+    """?fmt=docx&style=sabesp_mensal returns the Sabesp Mensal report with
+    the upload's polo name and inspection dates bound into the template."""
+    from io import BytesIO
+
+    from docx import Document
+
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/download/{upload_id}?fmt=docx&style=sabesp_mensal")
+
+    assert response.status_code == 200
+    assert "wordprocessingml.document" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+
+    doc = Document(BytesIO(response.data))
+    text = "\n".join(
+        [p.text for p in doc.paragraphs]
+        + [cell.text for tbl in doc.tables for row in tbl.rows for cell in row.cells]
+    )
+    # Polo name from the fixture (PIMENTAS) and fixture date range bind in.
+    assert "Pimentas" in text
+    assert "PIMENTAS" in text
+    assert "05/03/2026" in text
+    assert "29/03/2026" in text
+    assert "Março de 2026" in text
+    # Original source-template polo must not leak.
+    assert "Gopouva" not in text
+    assert "Gopoúva" not in text
+    # No unrendered Jinja markers.
+    assert "{{" not in text
+
+
+def test_docx_skeleton_route_serves_raw_template(client):
+    response = client.get("/templates/docx/sabesp_mensal")
+
+    assert response.status_code == 200
+    assert "wordprocessingml.document" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+    assert "sabesp_mensal_template.docx" in response.headers["Content-Disposition"]
+
+
+def test_docx_skeleton_route_rejects_unknown_style(client):
+    response = client.get("/templates/docx/nope")
+
+    assert response.status_code == 404
+
+
 def test_download_returns_400_for_unsupported_format(client, tmp_path):
     upload_id = _upload_minimal(client, tmp_path)
 

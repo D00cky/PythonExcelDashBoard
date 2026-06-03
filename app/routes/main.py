@@ -448,6 +448,13 @@ def team_detail(upload_id: str) -> str:
 
 _SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx", "pptx"}
 _BATCH_FORMATS = {"md", "xlsx", "html", "docx", "pdf"}
+_DOCX_STYLES = {"sabesp_mensal"}
+
+
+def _docx_style_arg() -> str | None:
+    """Whitelist the ?style= query arg so callers can't smuggle paths into the loader."""
+    raw = request.args.get("style", "").strip().lower()
+    return raw if raw in _DOCX_STYLES else None
 
 
 @bp.get("/download/<upload_id>")
@@ -465,7 +472,7 @@ def download(upload_id: str) -> Response:
             template = recognize(workbook.sheetnames)
             if not isinstance(template, PimentasTemplate):
                 abort(404)
-            body, mimetype = render_export(fmt, template, workbook, path)
+            body, mimetype = render_export(fmt, template, workbook, path, style=_docx_style_arg())
             response = Response(body, mimetype=mimetype)
             response.headers["Content-Disposition"] = (
                 f'attachment; filename="dashboard-{polo_arg}-{upload_id[:8]}.{fmt}"'
@@ -485,9 +492,33 @@ def download(upload_id: str) -> Response:
     if not isinstance(template, PimentasTemplate):
         abort(404)
 
-    body, mimetype = render_export(fmt, template, workbook, path)
+    body, mimetype = render_export(fmt, template, workbook, path, style=_docx_style_arg())
     response = Response(body, mimetype=mimetype)
     response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
+    return response
+
+
+@bp.get("/templates/docx/<style>")
+def docx_skeleton(style: str) -> Response:
+    """Serve the raw, unbound docxtpl skeleton so users can hand-edit the layout.
+
+    Whitelisted via ``_DOCX_STYLES`` — bare filename, no traversal possible.
+    """
+    if style not in _DOCX_STYLES:
+        abort(404)
+    from app.core.exporters import docx_sabesp
+
+    skeleton_path = {
+        "sabesp_mensal": docx_sabesp.SKELETON_PATH,
+    }[style]
+    if not skeleton_path.exists():
+        abort(404)
+    body = skeleton_path.read_bytes()
+    response = Response(
+        body,
+        mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    response.headers["Content-Disposition"] = f'attachment; filename="{style}_template.docx"'
     return response
 
 
