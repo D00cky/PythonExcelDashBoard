@@ -144,10 +144,7 @@ def _batch_polo_path(batch_dir: Path, polo: str) -> Path:
 
 def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path, polo: str) -> str:
     """Render the legacy single-file dashboard, but tagged as one tab in a batch."""
-    workbook = load_workbook(path, data_only=True, read_only=True)
-    template = recognize(workbook.sheetnames)
-    if not isinstance(template, PimentasTemplate):
-        abort(404)
+    _open_pimentas(path)  # 404 guard; cached context below re-opens & uses workbook
 
     batch = load_batch(batch_dir)
     filter_start = _parse_iso_date(request.args.get("start", ""))
@@ -362,10 +359,7 @@ def report(upload_id: str) -> str:
 
     if kind == "legacy":
         path = target
-        workbook = load_workbook(path, data_only=True, read_only=True)
-        template = recognize(workbook.sheetnames)
-        if not isinstance(template, PimentasTemplate):
-            abort(404)
+        template, workbook = _open_pimentas(path)
         context = _build_polo_context(template, workbook, path)
         context["per_service_sections"] = _undefer_per_service_sections(
             context["per_service_sections"]
@@ -382,10 +376,7 @@ def report(upload_id: str) -> str:
     batch_dir = target
     if polo_arg and polo_arg != "__all":
         path = _batch_polo_path(batch_dir, polo_arg)
-        workbook = load_workbook(path, data_only=True, read_only=True)
-        template = recognize(workbook.sheetnames)
-        if not isinstance(template, PimentasTemplate):
-            abort(404)
+        template, workbook = _open_pimentas(path)
         context = _build_polo_context(template, workbook, path)
         context["per_service_sections"] = _undefer_per_service_sections(
             context["per_service_sections"]
@@ -439,10 +430,7 @@ def team_detail(upload_id: str) -> str:
         path = target
         dashboard_url = url_for("main.dashboard", upload_id=upload_id)
 
-    workbook = load_workbook(path, data_only=True, read_only=True)
-    template = recognize(workbook.sheetnames)
-    if not isinstance(template, PimentasTemplate):
-        abort(404)
+    template, _workbook = _open_pimentas(path)
     detail = template.extract_team_detail(path, team_name)
     if not detail:
         abort(404)
@@ -477,10 +465,7 @@ def download(upload_id: str) -> Response:
             if fmt not in _SUPPORTED_FORMATS:
                 abort(400)
             path = _batch_polo_path(target, polo_arg)
-            workbook = load_workbook(path, data_only=True, read_only=True)
-            template = recognize(workbook.sheetnames)
-            if not isinstance(template, PimentasTemplate):
-                abort(404)
+            template, workbook = _open_pimentas(path)
             body, mimetype = render_export(fmt, template, workbook, path, style=_docx_style_arg())
             response = Response(body, mimetype=mimetype)
             response.headers["Content-Disposition"] = (
@@ -496,10 +481,7 @@ def download(upload_id: str) -> Response:
         abort(400)
 
     path = _upload_path(upload_id)
-    workbook = load_workbook(path, data_only=True, read_only=True)
-    template = recognize(workbook.sheetnames)
-    if not isinstance(template, PimentasTemplate):
-        abort(404)
+    template, workbook = _open_pimentas(path)
 
     body, mimetype = render_export(fmt, template, workbook, path, style=_docx_style_arg())
     response = Response(body, mimetype=mimetype)
@@ -573,6 +555,21 @@ def _resolve_upload(upload_id: str) -> tuple[str, Path]:
     if legacy.exists():
         return "legacy", legacy
     abort(404)
+
+
+def _open_pimentas(path: Path):
+    """Open ``path`` read-only and recognize the template; ``abort(404)`` when it
+    isn't a Pimentas workbook.
+
+    Used by routes that don't need the unknown-template fallback page
+    (``dashboard.html`` keeps its own branch since it renders ``dashboard_unknown.html``
+    instead of 404'ing).
+    """
+    workbook = load_workbook(path, data_only=True, read_only=True)
+    template = recognize(workbook.sheetnames)
+    if not isinstance(template, PimentasTemplate):
+        abort(404)
+    return template, workbook
 
 
 def _parse_iso_date(value: str) -> pd.Timestamp | None:
