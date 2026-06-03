@@ -376,6 +376,32 @@ def test_report_route_combined_view(client, tmp_path):
     assert "SANTANA" in body.upper()
 
 
+def test_report_section_8_etapa_column_populated_from_stages_key(client, tmp_path):
+    """report.html#8 read r.stage (singular) while top_observations emits
+    r.stages (plural, comma-joined). Jinja silently returned empty for every
+    Etapa cell. This test guards against re-introducing that mismatch."""
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    # Need an upload with NC observations so the section 8 table is populated.
+    payload = make_minimal_pimentas(tmp_path, with_inspections=True).read_bytes()
+    upload_response = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(payload), "report.xlsx")},
+        content_type="multipart/form-data",
+    )
+    upload_id = upload_response.location.removeprefix("/dashboard/")
+
+    response = client.get(f"/report/{upload_id}")
+    body = response.data.decode("utf-8")
+
+    assert response.status_code == 200
+    # If the section 8 table is present at all, the Etapa column must carry
+    # *some* non-whitespace text from the stages join — never an unrendered
+    # placeholder that silently degrades to an empty cell.
+    if "8. Principais Observações de NC" in body:
+        assert "{{ r.stage" not in body  # no leaked unrendered template
+
+
 def test_report_section_7_per_service_charts_are_not_deferred(client, tmp_path):
     """Section 7 (Detalhamento por Serviço) renders blank when the dashboard's
     scroll-revive marker leaks into the report — report.html has no

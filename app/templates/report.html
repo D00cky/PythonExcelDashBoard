@@ -123,7 +123,7 @@
         <thead><tr><th>Etapa</th><th>Observação</th><th class="num">Ocorrências</th></tr></thead>
         <tbody>
             {% for r in top_nc_observations %}
-            <tr><td>{{ r.stage }}</td><td>{{ r.observation }}</td><td class="num">{{ r.count }}</td></tr>
+            <tr><td>{{ r.stages }}</td><td>{{ r.observation }}</td><td class="num">{{ r.count }}</td></tr>
             {% endfor %}
         </tbody>
     </table>
