@@ -262,29 +262,23 @@ def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
     return render_template("dashboard.html", **context)
 
 
-def _build_batch_context(
-    batch: PoloBatch,
-    polos: tuple[str, ...],
-    view: str,
-    period_key: str,
+def _build_chart_context(
+    template: PimentasTemplate,
+    inspections: pd.DataFrame,
+    failures: pd.DataFrame,
+    iqs_rows: list,
+    ic_rows: list,
+    iqs_overall: float | None,
 ) -> dict[str, Any]:
-    filtered = filter_batch(batch, polos=polos, view=view, period_key=period_key)
-    inspections = combined_inspections(filtered)
-    failures = combined_stage_failures(filtered)
+    """The polo-agnostic slice of the dashboard context — every Plotly chart
+    HTML, the per-service sections, the top-observation lists, the simple
+    counts. Single-Polo and batch dashboards layer their own polo_name,
+    periodo, and filter metadata on top.
 
-    # Pick any concrete PimentasTemplate instance for SERVICE_SHEETS + build_* methods.
-    template = PimentasTemplate()
+    Sharing this avoids the previous ~50-line cut-and-paste between
+    _build_polo_context and _build_batch_context.
+    """
     services = sorted(template.SERVICE_SHEETS)
-    iqs_rows = _iqs_rows_from_inspections(inspections, services)
-    ic_rows = _ic_rows_from_inspections(inspections, services)
-    iqs_overall = _iqs_overall_from_inspections(inspections)
-
-    periodo = format_period_pt(date_bounds(inspections))
-    teams_sorted = (
-        sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
-    )
-    polo_label = polos[0].title() if len(polos) == 1 else "Múltiplos Polos"
-
     per_service_sections = []
     for idx, service in enumerate(services):
         team_html = template.build_team_conformity_for_service(inspections, service).to_html(
@@ -300,10 +294,7 @@ def _build_batch_context(
                 "tss_chart": _defer_plotly_script(tss_html),
             }
         )
-
     return {
-        "polo_name": polo_label,
-        "periodo": periodo,
         "iqs_overall": iqs_overall,
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
@@ -334,16 +325,46 @@ def _build_batch_context(
         if not inspections.empty
         else 0,
         "per_service_sections": per_service_sections,
-        "teams_sorted": teams_sorted,
-        "filter_start": "",
-        "filter_end": "",
-        "available_start": "",
-        "available_end": "",
-        "is_filtered": False,
-        "swap_dates": False,
-        "recomputed": True,
-        "span_warning": None,
+        "teams_sorted": sorted(inspections["team"].dropna().unique().tolist())
+        if not inspections.empty
+        else [],
     }
+
+
+def _build_batch_context(
+    batch: PoloBatch,
+    polos: tuple[str, ...],
+    view: str,
+    period_key: str,
+) -> dict[str, Any]:
+    filtered = filter_batch(batch, polos=polos, view=view, period_key=period_key)
+    inspections = combined_inspections(filtered)
+    failures = combined_stage_failures(filtered)
+
+    # Pick any concrete PimentasTemplate instance for SERVICE_SHEETS + build_* methods.
+    template = PimentasTemplate()
+    services = sorted(template.SERVICE_SHEETS)
+    iqs_rows = _iqs_rows_from_inspections(inspections, services)
+    ic_rows = _ic_rows_from_inspections(inspections, services)
+    iqs_overall = _iqs_overall_from_inspections(inspections)
+
+    polo_label = polos[0].title() if len(polos) == 1 else "Múltiplos Polos"
+    context = _build_chart_context(template, inspections, failures, iqs_rows, ic_rows, iqs_overall)
+    context.update(
+        {
+            "polo_name": polo_label,
+            "periodo": format_period_pt(date_bounds(inspections)),
+            "filter_start": "",
+            "filter_end": "",
+            "available_start": "",
+            "available_end": "",
+            "is_filtered": False,
+            "swap_dates": False,
+            "recomputed": True,
+            "span_warning": None,
+        }
+    )
+    return context
 
 
 @bp.get("/report/<upload_id>")
@@ -630,69 +651,22 @@ def _build_polo_context(
         iqs_overall = template.extract_iqs_overall(workbook)
 
     periodo = format_period_pt(date_bounds(inspections)) or template.extract_periodo(workbook)
-    teams_sorted = (
-        sorted(inspections["team"].dropna().unique().tolist()) if not inspections.empty else []
+    context = _build_chart_context(template, inspections, failures, iqs_rows, ic_rows, iqs_overall)
+    context.update(
+        {
+            "polo_name": template.polo_name.title(),
+            "periodo": periodo,
+            "filter_start": _iso(filter_start),
+            "filter_end": _iso(filter_end),
+            "available_start": _iso(available_start),
+            "available_end": _iso(available_end),
+            "is_filtered": is_filtered,
+            "swap_dates": swap_dates,
+            "recomputed": recomputed,
+            "span_warning": span_warning,
+        }
     )
-
-    per_service_sections = []
-    for idx, service in enumerate(sorted(template.SERVICE_SHEETS)):
-        team_html = template.build_team_conformity_for_service(inspections, service).to_html(
-            include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"
-        )
-        tss_html = template.build_tss_conformity_for_service(inspections, service).to_html(
-            include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"
-        )
-        per_service_sections.append(
-            {
-                "service": service,
-                "team_chart": _defer_plotly_script(team_html),
-                "tss_chart": _defer_plotly_script(tss_html),
-            }
-        )
-
-    return {
-        "polo_name": template.polo_name.title(),
-        "periodo": periodo,
-        "iqs_overall": iqs_overall,
-        "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
-        "total_inspections": len(inspections),
-        "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
-            include_plotlyjs=False, full_html=False, div_id="ic-bar"
-        ),
-        "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
-            include_plotlyjs=False, full_html=False, div_id="iqs-bar"
-        ),
-        "fig_photos": template.build_photo_conformity_stacked(iqs_rows).to_html(
-            include_plotlyjs=False, full_html=False, div_id="photos"
-        ),
-        "fig_team_service": template.build_team_service_stacked(inspections).to_html(
-            include_plotlyjs=False, full_html=False, div_id="team-service"
-        ),
-        "fig_tss": template.build_tss_distribution(inspections).to_html(
-            include_plotlyjs=False, full_html=False, div_id="tss-distribution"
-        ),
-        "fig_failing_stages": template.build_top_failing_stages(failures).to_html(
-            include_plotlyjs=False, full_html=False, div_id="failing-stages"
-        ),
-        "fig_worst_teams": template.build_worst_teams(inspections).to_html(
-            include_plotlyjs=False, full_html=False, div_id="worst-teams"
-        ),
-        "top_nc_observations": top_observations(failures, "NC"),
-        "top_sf_observations": top_observations(failures, "SF"),
-        "total_failing_os": int(inspections["nao_conforme_count"].sum())
-        if not inspections.empty
-        else 0,
-        "per_service_sections": per_service_sections,
-        "teams_sorted": teams_sorted,
-        "filter_start": _iso(filter_start),
-        "filter_end": _iso(filter_end),
-        "available_start": _iso(available_start),
-        "available_end": _iso(available_end),
-        "is_filtered": is_filtered,
-        "swap_dates": swap_dates,
-        "recomputed": recomputed,
-        "span_warning": span_warning,
-    }
+    return context
 
 
 def _defer_plotly_script(chart_html: str) -> str:
