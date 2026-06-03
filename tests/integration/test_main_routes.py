@@ -376,6 +376,45 @@ def test_report_route_combined_view(client, tmp_path):
     assert "SANTANA" in body.upper()
 
 
+def test_report_section_7_per_service_charts_are_not_deferred(client, tmp_path):
+    """Section 7 (Detalhamento por Serviço) renders blank when the dashboard's
+    scroll-revive marker leaks into the report — report.html has no
+    IntersectionObserver bootstrap. The per-service charts must ship with
+    plain <script> tags so they execute on page load."""
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/report/{batch_id}?polo=__all")
+    body = response.data.decode("utf-8")
+
+    assert response.status_code == 200
+    # Section 7 header is present whenever per-service sections exist.
+    assert "7. Detalhamento por Serviço" in body
+    # Service sub-headings (rendered as <h3>) exist for the inspected services.
+    assert "ÁGUA" in body
+    assert "ESGOTO" in body
+    # The dashboard's deferred-script marker must NOT appear in report bodies.
+    assert 'type="text/plotly-defer"' not in body
+
+
+def test_report_section_7_per_service_charts_present_for_legacy_single(client, tmp_path):
+    from tests.fixtures.pimentas_minimal import make_minimal_pimentas
+
+    payload = make_minimal_pimentas(tmp_path, with_inspections=True).read_bytes()
+    upload_response = client.post(
+        "/upload",
+        data={"file": (io.BytesIO(payload), "report.xlsx")},
+        content_type="multipart/form-data",
+    )
+    upload_id = upload_response.location.removeprefix("/dashboard/")
+
+    response = client.get(f"/report/{upload_id}")
+    body = response.data.decode("utf-8")
+
+    assert response.status_code == 200
+    assert "7. Detalhamento por Serviço" in body
+    assert 'type="text/plotly-defer"' not in body
+
+
 def test_report_route_unknown_polo_404s(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 

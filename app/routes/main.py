@@ -365,6 +365,9 @@ def report(upload_id: str) -> str:
         if not isinstance(template, PimentasTemplate):
             abort(404)
         context = _build_polo_context(template, workbook, path)
+        context["per_service_sections"] = _undefer_per_service_sections(
+            context["per_service_sections"]
+        )
         return render_template(
             "report.html",
             scope_label=template.polo_name.title(),
@@ -382,6 +385,9 @@ def report(upload_id: str) -> str:
         if not isinstance(template, PimentasTemplate):
             abort(404)
         context = _build_polo_context(template, workbook, path)
+        context["per_service_sections"] = _undefer_per_service_sections(
+            context["per_service_sections"]
+        )
         return render_template(
             "report.html",
             scope_label=polo_arg.title(),
@@ -403,6 +409,7 @@ def report(upload_id: str) -> str:
     )
     context = _build_batch_context(batch, selected_polos, view, period)
     context["polos_included"] = list(selected_polos)
+    context["per_service_sections"] = _undefer_per_service_sections(context["per_service_sections"])
     return render_template(
         "report.html",
         scope_label="Múltiplos Polos",
@@ -706,6 +713,30 @@ def _defer_plotly_script(chart_html: str) -> str:
     unambiguous.
     """
     return chart_html.replace("<script>", '<script type="text/plotly-defer">', 1)
+
+
+def _undefer_plotly_script(chart_html: str) -> str:
+    """Inverse of ``_defer_plotly_script`` — used by views that don't carry the
+    IntersectionObserver bootstrap (e.g. report.html), where a deferred script
+    would never execute and the chart would render as an empty <div>.
+    """
+    return chart_html.replace('<script type="text/plotly-defer">', "<script>", 1)
+
+
+def _undefer_per_service_sections(sections: list[dict]) -> list[dict]:
+    """Strip the dashboard's scroll-revive marker from per-service chart HTMLs.
+
+    Section 7 (Detalhamento por Serviço) is the only place the report template
+    consumes deferred charts; sections 1–6 use the raw chart HTML directly.
+    """
+    return [
+        {
+            **sec,
+            "team_chart": _undefer_plotly_script(sec["team_chart"]),
+            "tss_chart": _undefer_plotly_script(sec["tss_chart"]),
+        }
+        for sec in sections
+    ]
 
 
 @lru_cache(maxsize=64)
