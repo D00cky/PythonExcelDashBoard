@@ -12,4 +12,3 @@ instance/
 build/
 dist/
 .DS_Store
-Model/
