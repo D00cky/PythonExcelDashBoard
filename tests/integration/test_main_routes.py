@@ -178,7 +178,7 @@ def test_per_polo_tab_hides_visao_and_periodo(client, tmp_path):
 def test_batch_dashboard_filters_to_one_polo(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
-    response = client.get(f"/dashboard/{batch_id}?polos=PIMENTAS&view=weekly&period=2026-W19")
+    response = client.get(f"/dashboard/{batch_id}?polos=PIMENTAS&view=weekly&period=2026-W10")
 
     assert response.status_code == 200
     body = response.data.decode("utf-8")
@@ -189,7 +189,7 @@ def test_batch_dashboard_filters_to_one_polo(client, tmp_path):
 def test_batch_download_markdown_mentions_both_polos(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
-    response = client.get(f"/download/{batch_id}?fmt=md&view=monthly&period=2026-05")
+    response = client.get(f"/download/{batch_id}?fmt=md&view=monthly&period=2026-03")
 
     assert response.status_code == 200
     assert "markdown" in response.mimetype
@@ -202,7 +202,7 @@ def test_batch_download_markdown_mentions_both_polos(client, tmp_path):
 def test_batch_download_html_standalone(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
-    response = client.get(f"/download/{batch_id}?fmt=html&view=weekly&period=2026-W19")
+    response = client.get(f"/download/{batch_id}?fmt=html&view=weekly&period=2026-W10")
 
     assert response.status_code == 200
     assert "html" in response.mimetype
@@ -215,7 +215,7 @@ def test_batch_download_html_standalone(client, tmp_path):
 def test_batch_download_xlsx_is_workbook(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
-    response = client.get(f"/download/{batch_id}?fmt=xlsx&view=weekly&period=2026-W19")
+    response = client.get(f"/download/{batch_id}?fmt=xlsx&view=weekly&period=2026-W10")
 
     assert response.status_code == 200
     assert "spreadsheetml" in response.mimetype
@@ -226,7 +226,7 @@ def test_batch_download_xlsx_is_workbook(client, tmp_path):
 def test_batch_download_docx_combined(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
-    response = client.get(f"/download/{batch_id}?fmt=docx&view=weekly&period=2026-W19")
+    response = client.get(f"/download/{batch_id}?fmt=docx&view=weekly&period=2026-W10")
 
     assert response.status_code == 200
     assert "wordprocessingml" in response.mimetype
@@ -243,7 +243,7 @@ def test_batch_download_docx_combined(client, tmp_path):
 def test_batch_download_pdf_combined(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
-    response = client.get(f"/download/{batch_id}?fmt=pdf&view=weekly&period=2026-W19")
+    response = client.get(f"/download/{batch_id}?fmt=pdf&view=weekly&period=2026-W10")
 
     assert response.status_code == 200
     assert response.mimetype == "application/pdf"
@@ -704,13 +704,56 @@ def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):
     assert "ASSISTENTES TÉCNICOS" in text
 
 
-def test_docx_skeleton_route_serves_raw_template(client):
+def test_download_docx_sabesp_semanal_renders_skeleton(client, tmp_path):
+    """?fmt=docx&style=sabesp_semanal returns the Sabesp Semanal cover page
+    with the upload's polo + inspection-derived period bound in. The structural
+    body (1. ACOMPANHAMENTO etc.) is intentionally empty — the auditor pastes
+    charts into the downloaded file manually."""
+    from io import BytesIO
+
+    from docx import Document
+
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/download/{upload_id}?fmt=docx&style=sabesp_semanal")
+
+    assert response.status_code == 200
+    assert "wordprocessingml.document" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+
+    doc = Document(BytesIO(response.data))
+    text = "\n".join(
+        [p.text for p in doc.paragraphs]
+        + [cell.text for tbl in doc.tables for row in tbl.rows for cell in row.cells]
+    )
+    # Polo name from the fixture and fixture date range bind in.
+    assert "PIMENTAS" in text
+    assert "05/03/2026" in text
+    assert "29/03/2026" in text
+    # Source-template values must not leak.
+    assert "EXTREMO NORTE" not in text
+    assert "01/03/2026" not in text
+    assert "25/03/2026" not in text
+    # No unrendered Jinja markers.
+    assert "{{" not in text
+
+
+def test_docx_skeleton_route_serves_raw_mensal_template(client):
     response = client.get("/templates/docx/sabesp_mensal")
 
     assert response.status_code == 200
     assert "wordprocessingml.document" in response.headers["Content-Type"]
     assert response.data[:2] == b"PK"
     assert "sabesp_mensal_template.docx" in response.headers["Content-Disposition"]
+
+
+def test_docx_skeleton_route_serves_raw_semanal_template(client):
+    response = client.get("/templates/docx/sabesp_semanal")
+
+    assert response.status_code == 200
+    assert "wordprocessingml.document" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+    assert "sabesp_semanal_template.docx" in response.headers["Content-Disposition"]
 
 
 def test_docx_skeleton_route_rejects_unknown_style(client):

@@ -8,9 +8,12 @@ from app.core.exporters.docx_sabesp import (
     EquipeMember,
     IndiceRow,
     MensalContext,
+    SemanalContext,
     context_from_template,
     indice_rows_from_inspections,
     render_mensal,
+    render_semanal,
+    semanal_context_from_template,
 )
 from app.core.templates.pimentas import PimentasTemplate
 from tests.fixtures.pimentas_minimal import make_minimal_pimentas
@@ -249,3 +252,67 @@ def test_context_from_template_passes_through_explicit_equipe(tmp_path):
     ctx = context_from_template(template, path, equipe=overrides)
 
     assert ctx.equipe == overrides
+
+
+# Semanal tests — cycle 2 (cover-page-only skeleton, polo + period bindings).
+
+
+def test_render_semanal_substitutes_polo_and_period_in_cover_table():
+    ctx = SemanalContext(
+        polo_label="Pimentas",
+        periodo_inicio="06/05/2026",
+        periodo_fim="12/05/2026",
+    )
+
+    body = render_semanal(ctx)
+
+    assert body[:2] == b"PK"  # docx zip
+    doc = Document(BytesIO(body))
+    # The cover table is doc.tables[0]; row 20 cell 1 is the period line,
+    # row 34 cell 1 is the POLO line. Other merged cells hold duplicates.
+    text = _all_text(doc)
+    assert "06/05/2026" in text
+    assert "12/05/2026" in text
+    assert "PIMENTAS" in text
+    # Source-template values must not leak.
+    assert "01/03/2026" not in text
+    assert "25/03/2026" not in text
+    assert "EXTREMO NORTE" not in text
+    # No unrendered Jinja markers.
+    assert "{{" not in text
+
+
+def test_semanal_context_polo_label_upper_derived_from_polo_label():
+    ctx = SemanalContext(
+        polo_label="Santana",
+        periodo_inicio="04/05/2026",
+        periodo_fim="10/05/2026",
+    )
+    assert ctx.polo_label_upper == "SANTANA"
+    assert "polo_label_upper" in ctx.as_render_dict()
+
+
+def test_semanal_context_from_template_uses_inspection_date_bounds(tmp_path):
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = semanal_context_from_template(template, path)
+
+    # Fixture inspections span 2026-03-05 to 2026-03-29.
+    assert ctx.periodo_inicio == "05/03/2026"
+    assert ctx.periodo_fim == "29/03/2026"
+    assert ctx.polo_label == "Pimentas"
+
+
+def test_semanal_context_from_template_handles_workbook_without_inspections(tmp_path):
+    path = make_minimal_pimentas(tmp_path, with_inspections=False)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = semanal_context_from_template(template, path)
+
+    # No dated inspections → blank period strings, polo label still binds.
+    assert ctx.polo_label == "Pimentas"
+    assert ctx.periodo_inicio == ""
+    assert ctx.periodo_fim == ""

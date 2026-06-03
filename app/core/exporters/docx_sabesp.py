@@ -1,9 +1,15 @@
-"""Render the Sabesp Mensal report via the docxtpl skeleton.
+"""Render the Sabesp Mensal and Semanal reports via docxtpl skeletons.
 
-The skeleton at ``app/core/templates/docx_skeletons/mensal_sabesp.docx`` is a real
-Sabesp monthly report with anchor strings replaced by Jinja placeholders by
-``scripts/build_docx_skeletons.py``. This module loads it, binds extracted data,
+The skeletons under ``app/core/templates/docx_skeletons/`` are real Sabesp report
+templates with anchor strings replaced by Jinja placeholders by
+``scripts/build_docx_skeletons.py``. This module loads them, binds extracted data,
 and returns the rendered bytes.
+
+- Mensal: data-rich. EQUIPE list + ÍNDICE TECNOLÓGICO POR EQUIPE table get bound
+  to xlsx-derived data alongside the polo name and period.
+- Semanal: cover-page-only. The structural body (1. ACOMPANHAMENTO, 2.x service
+  blocks) is intentionally empty in the source — auditors paste their per-service
+  charts/screenshots manually. Only polo + period bind.
 """
 
 from __future__ import annotations
@@ -17,9 +23,9 @@ from docxtpl import DocxTemplate
 
 from app.core.templates.pimentas import PimentasTemplate
 
-SKELETON_PATH = (
-    Path(__file__).resolve().parent.parent / "templates" / "docx_skeletons" / "mensal_sabesp.docx"
-)
+_SKELETON_DIR = Path(__file__).resolve().parent.parent / "templates" / "docx_skeletons"
+MENSAL_SKELETON_PATH = _SKELETON_DIR / "mensal_sabesp.docx"
+SEMANAL_SKELETON_PATH = _SKELETON_DIR / "semanal_sabesp.docx"
 
 _MONTH_PT = {
     1: "Janeiro",
@@ -95,7 +101,40 @@ class MensalContext:
         }
 
 
-def render_mensal(context: MensalContext, *, skeleton: Path = SKELETON_PATH) -> bytes:
+def render_mensal(context: MensalContext, *, skeleton: Path = MENSAL_SKELETON_PATH) -> bytes:
+    tpl = DocxTemplate(str(skeleton))
+    tpl.render(context.as_render_dict())
+    buf = BytesIO()
+    tpl.save(buf)
+    return buf.getvalue()
+
+
+@dataclass(frozen=True)
+class SemanalContext:
+    """Inputs the Sabesp Semanal skeleton expects bound. The semanal source only
+    has cover-page fields that vary per report, so the binding surface is small —
+    polo name + period — but ``polo_label_upper`` is derived rather than passed
+    so callers don't have to think about Brazilian-Portuguese case rules.
+    """
+
+    polo_label: str
+    periodo_inicio: str  # dd/mm/yyyy
+    periodo_fim: str  # dd/mm/yyyy
+
+    @property
+    def polo_label_upper(self) -> str:
+        return self.polo_label.upper()
+
+    def as_render_dict(self) -> dict[str, str]:
+        return {
+            "polo_label": self.polo_label,
+            "polo_label_upper": self.polo_label_upper,
+            "periodo_inicio": self.periodo_inicio,
+            "periodo_fim": self.periodo_fim,
+        }
+
+
+def render_semanal(context: SemanalContext, *, skeleton: Path = SEMANAL_SKELETON_PATH) -> bytes:
     tpl = DocxTemplate(str(skeleton))
     tpl.render(context.as_render_dict())
     buf = BytesIO()
@@ -135,6 +174,27 @@ def indice_rows_from_inspections(inspections: pd.DataFrame) -> tuple[IndiceRow, 
     return tuple(rows)
 
 
+def _period_fields(inspections: pd.DataFrame) -> tuple[str, str, str, str]:
+    """Return ``(periodo_inicio, periodo_fim, mes_extenso, ano)`` derived from the
+    inspections' ``start_date`` column. Empty strings when no dated rows exist —
+    the Sabesp templates expect *something* in those fields, blanking them looks
+    broken to a reviewer, but a clearly-empty value is still better than 1970/1/1.
+    """
+    if "start_date" not in inspections.columns:
+        return "", "", "", ""
+    dates = inspections["start_date"].dropna()
+    if dates.empty:
+        return "", "", "", ""
+    start = dates.min()
+    end = dates.max()
+    return (
+        f"{start:%d/%m/%Y}",
+        f"{end:%d/%m/%Y}",
+        _MONTH_PT.get(int(end.month), ""),
+        f"{end.year}",
+    )
+
+
 def context_from_template(
     template: PimentasTemplate,
     path: Path,
@@ -144,24 +204,10 @@ def context_from_template(
     """Build a MensalContext from a PimentasTemplate + the uploaded xlsx path.
 
     ``equipe`` defaults to empty because the xlsx doesn't carry the audit-team org
-    chart — callers can override it. Falls back to safe placeholders when the
-    workbook lacks dated inspections (the Sabesp report needs *something* in those
-    fields, blanking them would look broken).
+    chart — callers can override it.
     """
     inspections = template.extract_inspections(path)
-    dates = inspections["start_date"].dropna() if "start_date" in inspections.columns else None
-    if dates is not None and not dates.empty:
-        start = dates.min()
-        end = dates.max()
-        periodo_inicio = f"{start:%d/%m/%Y}"
-        periodo_fim = f"{end:%d/%m/%Y}"
-        mes_extenso = _MONTH_PT.get(int(end.month), "")
-        ano = f"{end.year}"
-    else:
-        periodo_inicio = ""
-        periodo_fim = ""
-        mes_extenso = ""
-        ano = ""
+    periodo_inicio, periodo_fim, mes_extenso, ano = _period_fields(inspections)
     return MensalContext(
         polo_label=template.polo_name.title(),
         periodo_inicio=periodo_inicio,
@@ -170,4 +216,15 @@ def context_from_template(
         ano=ano,
         equipe=equipe,
         indice_tecnologico=indice_rows_from_inspections(inspections),
+    )
+
+
+def semanal_context_from_template(template: PimentasTemplate, path: Path) -> SemanalContext:
+    """Build a SemanalContext from a PimentasTemplate + the uploaded xlsx path."""
+    inspections = template.extract_inspections(path)
+    periodo_inicio, periodo_fim, _mes_extenso, _ano = _period_fields(inspections)
+    return SemanalContext(
+        polo_label=template.polo_name.title(),
+        periodo_inicio=periodo_inicio,
+        periodo_fim=periodo_fim,
     )

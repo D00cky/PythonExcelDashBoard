@@ -23,8 +23,10 @@ from docx.text.paragraph import Paragraph
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MENSAL_SOURCE_DIR = REPO_ROOT / "Model" / "RELATORIOS"
+SEMANAL_SOURCE_DIR = REPO_ROOT / "Model" / "RELATORIOS" / "SEMANAIS"
 SKELETON_DIR = REPO_ROOT / "app" / "core" / "templates" / "docx_skeletons"
 OUTPUT_MENSAL = SKELETON_DIR / "mensal_sabesp.docx"
+OUTPUT_SEMANAL = SKELETON_DIR / "semanal_sabesp.docx"
 
 
 def find_mensal_source() -> Path:
@@ -43,6 +45,20 @@ def find_mensal_source() -> Path:
     return candidates[0]
 
 
+def find_semanal_source() -> Path:
+    """Glob for the Sabesp weekly template — the literal name is ``Relatório Semanal -
+    SEU POLO - (MES) 01 até 99 de 2026.docx`` and includes accented characters that
+    survive a clean re-extract but not the mojibake'd one cycle-1 dealt with.
+    """
+    candidates = sorted(SEMANAL_SOURCE_DIR.glob("*SEU POLO*.docx"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"no '*SEU POLO*.docx' under {SEMANAL_SOURCE_DIR}; "
+            "did the Model/RELATORIOS/SEMANAIS layout change?"
+        )
+    return candidates[0]
+
+
 # (anchor literal in source, placeholder to emit) — order matters: longer/more-specific
 # anchors first, so partial overlaps with shorter ones don't corrupt the document.
 MENSAL_REPLACEMENTS: list[tuple[str, str]] = [
@@ -52,6 +68,15 @@ MENSAL_REPLACEMENTS: list[tuple[str, str]] = [
     ("GOPOÚVA", "{{ polo_label_upper }}"),
     ("Gopoúva", "{{ polo_label }}"),
     ("Gopouva", "{{ polo_label }}"),
+]
+
+# Semanal is a cover-page-only template — the structural body (1. ACOMPANHAMENTO,
+# 2.x service blocks, 3. FOTOS) is empty and gets filled in manually by the auditor.
+# Cycle-2 binds just the cover-table fields that vary per report.
+SEMANAL_REPLACEMENTS: list[tuple[str, str]] = [
+    ("01/03/2026", "{{ periodo_inicio }}"),
+    ("25/03/2026", "{{ periodo_fim }}"),
+    ("EXTREMO NORTE", "{{ polo_label_upper }}"),
 ]
 
 
@@ -247,16 +272,45 @@ def build_mensal_skeleton(source: Path, target: Path) -> dict[str, int]:
     return counts
 
 
-def main() -> int:
-    source = find_mensal_source()
-    print(f"source:  {source}")
-    print(f"target:  {OUTPUT_MENSAL}")
-    counts = build_mensal_skeleton(source, OUTPUT_MENSAL)
+def build_semanal_skeleton(source: Path, target: Path) -> dict[str, int]:
+    """Build the weekly skeleton. The structural body is empty in the source
+    template, so this is a thin pass: cross-run substitution of the cover-table
+    anchors (period dates + polo name), no loop wrapping needed.
+    """
+    if not source.exists():
+        raise FileNotFoundError(f"source docx not found: {source}")
+    doc = Document(str(source))
+    counts: dict[str, int] = {}
+    for anchor, placeholder in SEMANAL_REPLACEMENTS:
+        n = 0
+        for paragraph in iter_paragraphs(doc):
+            n += replace_in_paragraph(paragraph, anchor, placeholder)
+        counts[anchor] = n
+    target.parent.mkdir(parents=True, exist_ok=True)
+    doc.save(str(target))
+    return counts
+
+
+def _print_counts(label: str, counts: dict[str, int], output: Path) -> None:
+    print(f"\n[{label}] → {output}")
     width = max(len(a) for a in counts)
     for anchor, n in counts.items():
         marker = "  " if n else "!!"
         print(f"  {marker} {anchor:<{width}} → {n} replacement(s)")
-    print(f"wrote {OUTPUT_MENSAL.stat().st_size:,} bytes")
+    print(f"  wrote {output.stat().st_size:,} bytes")
+
+
+def main() -> int:
+    mensal_source = find_mensal_source()
+    semanal_source = find_semanal_source()
+    print(f"mensal source:   {mensal_source}")
+    print(f"semanal source:  {semanal_source}")
+
+    mensal_counts = build_mensal_skeleton(mensal_source, OUTPUT_MENSAL)
+    _print_counts("mensal", mensal_counts, OUTPUT_MENSAL)
+
+    semanal_counts = build_semanal_skeleton(semanal_source, OUTPUT_SEMANAL)
+    _print_counts("semanal", semanal_counts, OUTPUT_SEMANAL)
     return 0
 
 

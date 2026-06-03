@@ -40,6 +40,13 @@ def render_export(
             from app.core.exporters.docx_sabesp import context_from_template, render_mensal
 
             body = render_mensal(context_from_template(template, path))
+        elif style == "sabesp_semanal":
+            from app.core.exporters.docx_sabesp import (
+                render_semanal,
+                semanal_context_from_template,
+            )
+
+            body = render_semanal(semanal_context_from_template(template, path))
         else:
             from app.core.exporters.docx import render_docx
 

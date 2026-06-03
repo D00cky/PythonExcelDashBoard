@@ -455,7 +455,7 @@ def team_detail(upload_id: str) -> str:
 
 _SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx", "pptx"}
 _BATCH_FORMATS = {"md", "xlsx", "html", "docx", "pdf"}
-_DOCX_STYLES = {"sabesp_mensal"}
+_DOCX_STYLES = {"sabesp_mensal", "sabesp_semanal"}
 
 
 def _docx_style_arg() -> str | None:
@@ -516,7 +516,8 @@ def docx_skeleton(style: str) -> Response:
     from app.core.exporters import docx_sabesp
 
     skeleton_path = {
-        "sabesp_mensal": docx_sabesp.SKELETON_PATH,
+        "sabesp_mensal": docx_sabesp.MENSAL_SKELETON_PATH,
+        "sabesp_semanal": docx_sabesp.SEMANAL_SKELETON_PATH,
     }[style]
     if not skeleton_path.exists():
         abort(404)
