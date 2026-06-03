@@ -45,19 +45,6 @@ _MONTH_PT = {
 
 
 @dataclass(frozen=True)
-class EquipeMember:
-    """One row in the auditing-team listing (Sondotécnica auditors, not field crews).
-
-    The xlsx doesn't carry this org chart, so callers either supply it explicitly
-    or accept an empty list (loop renders zero entries, ASSISTENTES stays static).
-    """
-
-    id: str  # e.g. "I", "III", "IV"
-    role: str  # e.g. "Tecnólogo", "Engenheira"
-    name: str  # e.g. "Lucas Jeremias"
-
-
-@dataclass(frozen=True)
 class IndiceRow:
     """One row of the ÍNDICE TECNOLÓGICO POR EQUIPE table.
 
@@ -81,7 +68,6 @@ class MensalContext:
     periodo_fim: str  # dd/mm/yyyy
     mes_extenso: str  # e.g. "Abril"
     ano: str  # e.g. "2026"
-    equipe: tuple[EquipeMember, ...] = ()
     indice_tecnologico: tuple[IndiceRow, ...] = ()
 
     @property
@@ -97,7 +83,6 @@ class MensalContext:
             "periodo_fim": self.periodo_fim,
             "mes_extenso": self.mes_extenso,
             "ano": self.ano,
-            "equipe": list(self.equipe),
             "indice": list(self.indice_tecnologico),
         }
 
@@ -193,17 +178,8 @@ def _period_fields(inspections: pd.DataFrame) -> tuple[str, str, str, str]:
     )
 
 
-def context_from_template(
-    template: PimentasTemplate,
-    path: Path,
-    *,
-    equipe: tuple[EquipeMember, ...] = (),
-) -> MensalContext:
-    """Build a MensalContext from a PimentasTemplate + the uploaded xlsx path.
-
-    ``equipe`` defaults to empty because the xlsx doesn't carry the audit-team org
-    chart — callers can override it.
-    """
+def context_from_template(template: PimentasTemplate, path: Path) -> MensalContext:
+    """Build a MensalContext from a PimentasTemplate + the uploaded xlsx path."""
     inspections = template.extract_inspections(path)
     periodo_inicio, periodo_fim, mes_extenso, ano = _period_fields(inspections)
     return MensalContext(
@@ -212,7 +188,6 @@ def context_from_template(
         periodo_fim=periodo_fim,
         mes_extenso=mes_extenso,
         ano=ano,
-        equipe=equipe,
         indice_tecnologico=indice_rows_from_inspections(inspections),
     )
 

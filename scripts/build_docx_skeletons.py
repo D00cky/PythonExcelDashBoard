@@ -148,50 +148,33 @@ def _iter_cell_paragraphs(cell: _Cell):
                 yield from _iter_cell_paragraphs(inner_cell)
 
 
-def _find_paragraph_starting_with(paragraphs, prefix: str):
-    return next((p for p in paragraphs if p.text.startswith(prefix)), None)
+def strip_body_range(doc: DocxDocument, start_text: str, end_text: str) -> int:
+    """Remove every top-level body element from the first one whose visible text
+    starts with ``start_text`` (inclusive) up to but not including the first one
+    whose text starts with ``end_text``.
 
-
-def wrap_equipe_block(doc: DocxDocument) -> int:
-    """Turn the EQUIPE I/III/IV listing into a docxtpl paragraph loop.
-
-    Source layout (after cycle-1 substitutions) is three List Paragraphs:
-      EQUIPE I  – Tecnólogo Lucas Jeremias
-      EQUIPE III – Engenheira Geovana ...
-      EQUIPE IV – Engenheiro Evanuel ...
-      ASSISTENTES TÉCNICOS – ...
-
-    We keep the first as the loop body (preserving the bold "EQUIPE X" run),
-    delete the other two, and wrap with ``{%p for m in equipe %}`` /
-    ``{%p endfor %}`` directive paragraphs. ASSISTENTES stays as static text.
-    Returns 1 on success, 0 if the anchor wasn't found (template already wrapped).
+    Top-level body children are ``<w:p>`` and ``<w:tbl>`` elements in document
+    order, so this excises both narrative paragraphs and any tables that fall
+    inside the range. Anchors are matched on plain concatenated text; both must
+    be present in correct document order or the function is a no-op (returns 0).
     """
-    anchor = _find_paragraph_starting_with(doc.paragraphs, "EQUIPE I")
-    if anchor is None:
+    body = doc.element.body
+    children = list(body)
+    start_idx: int | None = None
+    end_idx: int | None = None
+    for i, el in enumerate(children):
+        text = "".join(el.itertext()).strip()
+        if start_idx is None:
+            if text.startswith(start_text):
+                start_idx = i
+        elif text.startswith(end_text):
+            end_idx = i
+            break
+    if start_idx is None or end_idx is None:
         return 0
-
-    anchor.insert_paragraph_before("{%p for m in equipe %}", style=anchor.style)
-
-    # Body: keep run[0] bold "EQUIPE {{ m.id }}", run[1] normal
-    # " – {{ m.role }} {{ m.name }}", blank the rest.
-    runs = anchor.runs
-    if runs:
-        runs[0].text = "EQUIPE {{ m.id }}"
-        if len(runs) > 1:
-            runs[1].text = " – {{ m.role }} {{ m.name }}"
-        for r in runs[2:]:
-            r.text = ""
-
-    # Delete EQUIPE III / EQUIPE IV — text-anchored so a reorder in the source
-    # won't silently produce a malformed skeleton.
-    for p in list(doc.paragraphs):
-        if p.text.startswith(("EQUIPE III", "EQUIPE IV")):
-            p._element.getparent().remove(p._element)
-
-    assistentes = _find_paragraph_starting_with(doc.paragraphs, "ASSISTENTES TÉCNICOS")
-    if assistentes is not None:
-        assistentes.insert_paragraph_before("{%p endfor %}", style=anchor.style)
-    return 1
+    for el in children[start_idx:end_idx]:
+        body.remove(el)
+    return end_idx - start_idx
 
 
 def wrap_indice_tecnologico_table(doc: DocxDocument) -> int:
@@ -256,16 +239,35 @@ def wrap_indice_tecnologico_table(doc: DocxDocument) -> int:
 
 
 def build_mensal_skeleton(source: Path, target: Path) -> dict[str, int]:
+    """Build the Mensal skeleton, scoped to digital-surveillance content only.
+
+    Strips the manual-audit sections (§2 DESCRIÇÃO DA EQUIPE through §6.3,
+    plus §6.5-§7) so the rendered report carries only the bits the dashboard
+    actually produces: cover page, §1 INTRODUÇÃO, §6.4 ÍNDICE DE CONFORMIDADE
+    POR EQUIPE (with the data-bound ÍNDICE TECNOLÓGICO POR EQUIPE table),
+    §8 ACOMPANHAMENTO – OLHAR DIGITAL (and its 8.x subsections — where charts
+    will land in a follow-up commit), and §9 CONCLUSÃO.
+    """
     if not source.exists():
         raise FileNotFoundError(f"source docx not found: {source}")
     doc = Document(str(source))
     counts: dict[str, int] = {}
+
+    # Strip BEFORE substitution so we don't waste work on content we're about
+    # to delete. Both strips use heading-text anchors so the source can renumber
+    # freely as long as the heading prefixes stay stable.
+    counts["<strip §2 → §6.4>"] = strip_body_range(
+        doc, "2. DESCRIÇÃO DA EQUIPE", "6.4 ÍNDICE DE CONFORMIDADE POR EQUIPE"
+    )
+    counts["<strip §6.5 → §8>"] = strip_body_range(
+        doc, "6.5 NÃO CONFORMIDADES", "8. ACOMPANHAMENTO"
+    )
+
     for anchor, placeholder in MENSAL_REPLACEMENTS:
         n = 0
         for paragraph in iter_paragraphs(doc):
             n += replace_in_paragraph(paragraph, anchor, placeholder)
         counts[anchor] = n
-    counts["<equipe loop>"] = wrap_equipe_block(doc)
     counts["<indice table loop>"] = wrap_indice_tecnologico_table(doc)
     target.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(target))

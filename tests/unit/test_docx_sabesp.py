@@ -5,7 +5,6 @@ from docx import Document
 from openpyxl import load_workbook
 
 from app.core.exporters.docx_sabesp import (
-    EquipeMember,
     IndiceRow,
     MensalContext,
     SemanalContext,
@@ -98,7 +97,7 @@ def test_context_from_template_handles_workbook_without_inspections(tmp_path):
 
 @pytest.mark.parametrize(
     "field",
-    ["polo_label", "periodo_inicio", "periodo_fim", "mes_extenso", "ano", "equipe", "indice"],
+    ["polo_label", "periodo_inicio", "periodo_fim", "mes_extenso", "ano", "indice"],
 )
 def test_render_dict_exposes_every_skeleton_placeholder(field):
     ctx = MensalContext(
@@ -116,50 +115,63 @@ def _indice_table(doc):
     return next(t for t in doc.tables if "ÍNDICE TECNOLÓGICO" in t.rows[0].cells[0].text)
 
 
-def test_render_mensal_expands_equipe_loop_to_supplied_members():
+def test_render_mensal_strips_manual_audit_sections():
+    """The digital-surveillance scope drops §2 DESCRIÇÃO DA EQUIPE,
+    §3 PLANO DE AMOSTRAGEM, §4 AUDITORIAS REALIZADAS / DCP, §5 MAPEAMENTO,
+    §6.1-6.3 (manual-audit narratives), §6.5-6.6 (NC do canteiro photos),
+    §7 NÃO CONFORMIDADES. The renderer must produce a doc that has none of
+    those headings nor their characteristic content."""
     ctx = MensalContext(
         polo_label="Pimentas",
         periodo_inicio="06/05/2026",
         periodo_fim="12/05/2026",
         mes_extenso="Maio",
         ano="2026",
-        equipe=(
-            EquipeMember(id="I", role="Tecnólogo", name="Foo Bar"),
-            EquipeMember(id="II", role="Engenheiro", name="Baz Qux"),
-        ),
     )
 
     doc = Document(BytesIO(render_mensal(ctx)))
-    equipe_lines = [p.text for p in doc.paragraphs if p.text.startswith("EQUIPE ")]
+    text = _all_text(doc)
 
-    # Only the section-2 EQUIPE I/II members render — section-5/6/etc. mention
-    # "EQUIPE I, IV e V" as part of a heading and don't start with "EQUIPE " (note
-    # the trailing space), so they aren't counted here.
-    equipe_section_lines = [line for line in equipe_lines if " – " in line]
-    assert equipe_section_lines == [
-        "EQUIPE I – Tecnólogo Foo Bar",
-        "EQUIPE II – Engenheiro Baz Qux",
-    ]
+    for stripped in (
+        "DESCRIÇÃO DA EQUIPE",
+        "PLANO DE AMOSTRAGEM",
+        "AUDITORIAS REALIZADAS",
+        "5. MAPEAMENTO",  # §5 only; §8.1 also says MAPEAMENTO so we anchor on prefix
+        "6.1 QUANTIDADE",
+        "6.2 ÍNDICE DE CONTROLE",
+        "6.5 NÃO CONFORMIDADES",
+        "EQUIPE I – Tecnólogo",  # original Sondotécnica auditor org chart
+        "CONTROLE DE DCP",
+        "Lucas Jeremias",  # Sondotécnica auditor name from the source
+    ):
+        assert stripped not in text, f"{stripped!r} should have been stripped"
 
 
-def test_render_mensal_with_empty_equipe_keeps_assistentes_static():
+def test_render_mensal_keeps_digital_surveillance_sections():
+    """The kept sections are the cover, §1 INTRODUÇÃO, §6.4 (ÍNDICE TECNOLÓGICO
+    POR EQUIPE table lives here), §8 ACOMPANHAMENTO – OLHAR DIGITAL plus 8.x
+    subsections, and §9 CONCLUSÃO."""
     ctx = MensalContext(
         polo_label="Pimentas",
         periodo_inicio="06/05/2026",
         periodo_fim="12/05/2026",
         mes_extenso="Maio",
         ano="2026",
-        equipe=(),
     )
 
     doc = Document(BytesIO(render_mensal(ctx)))
-    para_texts = [p.text for p in doc.paragraphs]
+    text = _all_text(doc)
 
-    # ASSISTENTES line is static — present regardless of equipe length.
-    assert any(line.startswith("ASSISTENTES TÉCNICOS") for line in para_texts)
-    # No named EQUIPE list members.
-    section_equipe = [line for line in para_texts if line.startswith("EQUIPE ") and " – " in line]
-    assert section_equipe == []
+    for kept in (
+        "1. INTRODUÇÃO",
+        "6.4 ÍNDICE DE CONFORMIDADE POR EQUIPE",
+        "8. ACOMPANHAMENTO",
+        "OLHAR DIGITAL",
+        "8.1 MAPEAMENTO FISCALIZAÇÕES",
+        "8.3 GRÁFICO IQS",
+        "9. CONCLUSÃO",
+    ):
+        assert kept in text, f"{kept!r} should still be present"
 
 
 def test_render_mensal_indice_table_repeats_one_row_per_supplied_entry():
@@ -238,20 +250,7 @@ def test_context_from_template_populates_indice_tecnologico_from_xlsx(tmp_path):
 
     ctx = context_from_template(template, path)
 
-    assert ctx.indice_tecnologico  # populated automatically
-    # Default equipe stays empty — xlsx doesn't carry that org chart.
-    assert ctx.equipe == ()
-
-
-def test_context_from_template_passes_through_explicit_equipe(tmp_path):
-    path = make_minimal_pimentas(tmp_path, with_inspections=True)
-    wb = load_workbook(path, data_only=True, read_only=True)
-    template = PimentasTemplate.detect(wb.sheetnames)
-    overrides = (EquipeMember(id="I", role="Tecnólogo", name="Quem Bom"),)
-
-    ctx = context_from_template(template, path, equipe=overrides)
-
-    assert ctx.equipe == overrides
+    assert ctx.indice_tecnologico  # populated automatically from xlsx
 
 
 # Semanal tests — cycle 2 (cover-page-only skeleton, polo + period bindings).

@@ -732,8 +732,6 @@ def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):
     assert len(indice_table.rows) >= 4  # 3 headers + at least 1 data row
     data_text = "\n".join(cell.text for row in indice_table.rows[3:] for cell in row.cells)
     assert "JOSIAS ALMEIDA FRANCISCO".title() in data_text
-    # ASSISTENTES line is static — present even when equipe is empty.
-    assert "ASSISTENTES TÉCNICOS" in text
 
 
 def test_download_docx_sabesp_semanal_renders_skeleton(client, tmp_path):
