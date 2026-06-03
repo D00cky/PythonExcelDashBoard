@@ -253,6 +253,39 @@ def test_context_from_template_populates_indice_tecnologico_from_xlsx(tmp_path):
     assert ctx.indice_tecnologico  # populated automatically from xlsx
 
 
+def test_context_from_template_populates_chart_pngs_for_section_8_1(tmp_path):
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = context_from_template(template, path)
+
+    # Every §8.1 placeholder gets PNG bytes; kaleido emits at least a few KB.
+    assert set(ctx.chart_pngs) == {"ic_bar", "iqs_bar", "photo_conformity"}
+    for key, png in ctx.chart_pngs.items():
+        assert png[:8] == b"\x89PNG\r\n\x1a\n", f"{key} should be a PNG"
+        assert len(png) > 1024
+
+
+def test_render_mensal_embeds_chart_images_under_section_8_1(tmp_path):
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = context_from_template(template, path)
+    body = render_mensal(ctx)
+
+    doc = Document(BytesIO(body))
+    # Embedded images surface as docx image relationships.
+    image_rels = [r for r in doc.part.rels.values() if "image" in r.reltype]
+    # Three §8.1 KPI charts → at least three image relationships.
+    assert len(image_rels) >= 3
+    # And no unrendered chart placeholders.
+    text = _all_text(doc)
+    for key in ("ic_bar", "iqs_bar", "photo_conformity"):
+        assert "{{ " + key not in text
+
+
 # Semanal tests — cycle 2 (cover-page-only skeleton, polo + period bindings).
 
 

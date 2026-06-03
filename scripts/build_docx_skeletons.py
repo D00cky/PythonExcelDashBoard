@@ -148,6 +148,44 @@ def _iter_cell_paragraphs(cell: _Cell):
                 yield from _iter_cell_paragraphs(inner_cell)
 
 
+# Chart placeholders inserted under each §8.x heading. The names match the keys
+# MensalContext puts into the render dict; the InlineImage objects get substituted
+# in for them at render time.
+CHART_PLACEHOLDERS_AFTER_8_1: list[str] = [
+    "{{ ic_bar }}",
+    "{{ iqs_bar }}",
+    "{{ photo_conformity }}",
+]
+
+
+def _find_paragraph_starting_with(paragraphs, prefix: str):
+    return next((p for p in paragraphs if p.text.startswith(prefix)), None)
+
+
+def insert_chart_placeholders(doc: DocxDocument) -> int:
+    """Insert chart placeholder paragraphs immediately after the §8.1 heading.
+
+    Each placeholder is a standalone paragraph whose text is ``{{ var }}`` —
+    docxtpl substitutes an InlineImage object at render time. Returns the
+    number of placeholders inserted (0 if §8.1 isn't present).
+
+    ``doc.paragraphs`` is a property that builds fresh Paragraph wrappers on
+    each access, so the heading + anchor lookups happen against a single
+    snapshot to keep the index stable.
+    """
+    paragraphs = doc.paragraphs
+    heading_idx = next(
+        (i for i, p in enumerate(paragraphs) if p.text.startswith("8.1 MAPEAMENTO")),
+        None,
+    )
+    if heading_idx is None or heading_idx + 1 >= len(paragraphs):
+        return 0
+    anchor = paragraphs[heading_idx + 1]
+    for placeholder in CHART_PLACEHOLDERS_AFTER_8_1:
+        anchor.insert_paragraph_before(placeholder)
+    return len(CHART_PLACEHOLDERS_AFTER_8_1)
+
+
 def strip_body_range(doc: DocxDocument, start_text: str, end_text: str) -> int:
     """Remove every top-level body element from the first one whose visible text
     starts with ``start_text`` (inclusive) up to but not including the first one
@@ -262,6 +300,8 @@ def build_mensal_skeleton(source: Path, target: Path) -> dict[str, int]:
     counts["<strip §6.5 → §8>"] = strip_body_range(
         doc, "6.5 NÃO CONFORMIDADES", "8. ACOMPANHAMENTO"
     )
+
+    counts["<chart placeholders §8.1>"] = insert_chart_placeholders(doc)
 
     for anchor, placeholder in MENSAL_REPLACEMENTS:
         n = 0
