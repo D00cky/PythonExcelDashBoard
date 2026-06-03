@@ -652,7 +652,14 @@ def test_download_pdf_returns_pdf_bytes(client, tmp_path):
     assert response.data[:4] == b"%PDF"
 
 
-def test_download_docx_returns_office_document(client, tmp_path):
+def test_download_docx_default_now_serves_sabesp_mensal(client, tmp_path):
+    """?fmt=docx (no style) returns the Sabesp Mensal template — the format
+    users actually deliver to clients. The legacy generic dashboard is only
+    accessible via ?fmt=docx&style=generic."""
+    from io import BytesIO
+
+    from docx import Document
+
     upload_id = _upload_minimal(client, tmp_path)
 
     response = client.get(f"/download/{upload_id}?fmt=docx")
@@ -660,6 +667,31 @@ def test_download_docx_returns_office_document(client, tmp_path):
     assert response.status_code == 200
     assert "wordprocessingml.document" in response.headers["Content-Type"]
     assert response.data[:2] == b"PK"
+
+    doc = Document(BytesIO(response.data))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    # Sabesp template starts with the OBJETO contract preamble — the legacy
+    # generic exporter started with "Dashboard — Polo".
+    assert "OBJETO" in text or "INTRODUÇÃO" in text
+    assert "Dashboard — Polo" not in text
+
+
+def test_download_docx_style_generic_still_serves_legacy_layout(client, tmp_path):
+    """?fmt=docx&style=generic keeps the old from-scratch dashboard available
+    for any external caller that bookmarked it."""
+    from io import BytesIO
+
+    from docx import Document
+
+    upload_id = _upload_minimal(client, tmp_path)
+
+    response = client.get(f"/download/{upload_id}?fmt=docx&style=generic")
+
+    assert response.status_code == 200
+    doc = Document(BytesIO(response.data))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    # Legacy layout's title.
+    assert "Dashboard — Polo" in text
 
 
 def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):

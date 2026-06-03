@@ -36,21 +36,24 @@ def render_export(
 
         body = render_pdf(template, workbook, path)
     elif fmt == "docx":
-        if style == "sabesp_mensal":
-            from app.core.exporters.docx_sabesp import context_from_template, render_mensal
-
-            body = render_mensal(context_from_template(template, path))
-        elif style == "sabesp_semanal":
+        # Default style is the Sabesp Mensal template — that's the report users
+        # actually deliver to clients. ``style=generic`` still routes to the
+        # legacy from-scratch dashboard for any caller that relied on it.
+        if style == "sabesp_semanal":
             from app.core.exporters.docx_sabesp import (
                 render_semanal,
                 semanal_context_from_template,
             )
 
             body = render_semanal(semanal_context_from_template(template, path))
-        else:
+        elif style == "generic":
             from app.core.exporters.docx import render_docx
 
             body = render_docx(template, workbook, path)
+        else:
+            from app.core.exporters.docx_sabesp import context_from_template, render_mensal
+
+            body = render_mensal(context_from_template(template, path))
     elif fmt == "pptx":
         from app.core.exporters.pptx import render_pptx
 

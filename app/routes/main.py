@@ -466,7 +466,7 @@ def team_detail(upload_id: str) -> str:
 
 _SUPPORTED_FORMATS = {"md", "xlsx", "pdf", "docx", "pptx"}
 _BATCH_FORMATS = {"md", "xlsx", "html", "docx", "pdf"}
-_DOCX_STYLES = {"sabesp_mensal", "sabesp_semanal"}
+_DOCX_STYLES = {"sabesp_mensal", "sabesp_semanal", "generic"}
 
 
 def _docx_style_arg() -> str | None:
