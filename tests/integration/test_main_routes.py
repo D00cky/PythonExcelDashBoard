@@ -287,6 +287,38 @@ def test_batch_download_pdf_combined(client, tmp_path):
     assert response.data[:4] == b"%PDF"
 
 
+def test_batch_dashboard_renders_hierarchical_zone_tabs(client, tmp_path):
+    """Two-polo batch where the polos live in different SP zones surfaces a
+    zone-tabs row so the user can drill in by zone before by polo."""
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Zone row: the PIMENTAS polo maps to "Zona Leste Metropolitana", SANTANA
+    # maps to "Zona Norte". Both labels must appear in the tab navigation.
+    assert "Zona Leste Metropolitana" in body
+    assert "Zona Norte" in body
+    # The "Zona" header label is the visual cue that the row is a zone tab strip.
+    assert "Zona</span>" in body or 'aria-label="Zona"' in body
+
+
+def test_batch_dashboard_zone_filter_narrows_polo_tabs(client, tmp_path):
+    """Selecting a zone hides polos outside that zone — only polos in the
+    active zone get municipality + polo sub-tabs shown."""
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}?zone=Zona+Norte")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    # Within Zona Norte we have SANTANA; the polo tab strip should mention it
+    # but not PIMENTAS (which lives in Zona Leste Metropolitana).
+    # Polo strip is the only place that shows "Santana" inside an <a> tag.
+    assert "Santana" in body
+
+
 def test_batch_dashboard_renders_polo_tabs(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 

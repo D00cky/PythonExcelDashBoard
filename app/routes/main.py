@@ -92,10 +92,17 @@ def dashboard(upload_id: str) -> str:
     kind, target = _resolve_upload(upload_id)
     if kind == "batch":
         polo_arg = request.args.get("polo")
+        zone_arg = request.args.get("zone")
+        municipality_arg = request.args.get("municipality")
         if polo_arg and polo_arg != "__all":
             path = _batch_polo_path(target, polo_arg)
             return _render_single_polo_dashboard(upload_id, path, batch_dir=target, polo=polo_arg)
-        return _render_batch_dashboard(upload_id, target)
+        return _render_batch_dashboard(
+            upload_id,
+            target,
+            zone=zone_arg,
+            municipality=municipality_arg,
+        )
 
     path = target
     workbook = load_workbook(path, data_only=True, read_only=True)
@@ -157,10 +164,22 @@ def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path
         _iso(filter_end),
         _swap_arg(),
     )
+    hierarchical = _build_hierarchical_tabs(
+        upload_id,
+        batch,
+        active_zone=request.args.get("zone"),
+        active_municipality=request.args.get("municipality"),
+        active_polo=polo,
+    )
     return render_template(
         "dashboard.html",
         download_action=url_for("main.download", upload_id=upload_id),
         tabs=_build_tabs(upload_id, batch, active_polo=polo),
+        zone_tabs=hierarchical["zone_tabs"],
+        municipality_tabs=hierarchical["municipality_tabs"],
+        polo_tabs=hierarchical["polo_tabs"],
+        active_zone=request.args.get("zone"),
+        active_municipality=request.args.get("municipality"),
         active_polo=polo,
         polo_query=f"polo={polo}",
         **context,
@@ -168,6 +187,9 @@ def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path
 
 
 def _build_tabs(upload_id: str, batch: PoloBatch, *, active_polo: str | None) -> list[dict]:
+    """Flat fallback tab strip (Todos + every polo). Kept for the integration
+    tests that pin the legacy single-row behaviour; the hierarchical builder
+    below is what production uses."""
     base = url_for("main.dashboard", upload_id=upload_id)
     tabs = [
         {
@@ -185,6 +207,121 @@ def _build_tabs(upload_id: str, batch: PoloBatch, *, active_polo: str | None) ->
             }
         )
     return tabs
+
+
+def _build_hierarchical_tabs(
+    upload_id: str,
+    batch: PoloBatch,
+    *,
+    active_zone: str | None,
+    active_municipality: str | None,
+    active_polo: str | None,
+) -> dict:
+    """Build three tab rows: Zone → Município → Polo.
+
+    Each row is suppressed (empty list) when the level has only one entry
+    *and* no narrower filter has been applied yet — so a single-zone batch
+    skips the zone row, etc. This keeps the UI uncluttered when there's
+    nothing to choose at a level.
+
+    Active level coalesces upward: passing only ``active_polo`` resolves
+    its zone + município from the catalog so the right parent tab lights up.
+    """
+    from app.core.aggregator import polo_geography
+
+    base = url_for("main.dashboard", upload_id=upload_id)
+
+    # Catalogue: one entry per file with its zone + município.
+    catalog: list[dict[str, str]] = []
+    for f in batch.files:
+        muni, zone = polo_geography(f)
+        catalog.append({"polo": f.polo, "municipality": muni, "zone": zone})
+
+    # If a polo is active without an explicit zone/município, derive parents.
+    if active_polo and active_polo != "__all":
+        for entry in catalog:
+            if entry["polo"] == active_polo:
+                active_zone = active_zone or entry["zone"]
+                active_municipality = active_municipality or entry["municipality"]
+                break
+
+    zones = sorted({e["zone"] for e in catalog})
+    zone_tabs = [
+        {
+            "label": "Todas as zonas",
+            "href": f"{base}?polo=__all",
+            "active": active_zone is None and active_polo in (None, "__all"),
+        }
+    ]
+    for z in zones:
+        zone_tabs.append(
+            {
+                "label": z,
+                "href": f"{base}?zone={z}",
+                "active": active_zone == z and active_municipality is None,
+            }
+        )
+
+    municipality_tabs: list[dict] = []
+    if active_zone is not None:
+        munis_in_zone = sorted(
+            {e["municipality"] or "—" for e in catalog if e["zone"] == active_zone}
+        )
+        if len(munis_in_zone) > 1 or active_municipality is not None:
+            municipality_tabs.append(
+                {
+                    "label": "Todas",
+                    "href": f"{base}?zone={active_zone}",
+                    "active": active_municipality is None,
+                }
+            )
+            for m in munis_in_zone:
+                municipality_tabs.append(
+                    {
+                        "label": m,
+                        "href": f"{base}?zone={active_zone}&municipality={m}",
+                        "active": active_municipality == m,
+                    }
+                )
+
+    polo_tabs: list[dict] = []
+    if active_municipality is not None or (active_zone is not None and active_polo):
+        polos_in_scope = sorted(
+            {
+                e["polo"]
+                for e in catalog
+                if (active_zone is None or e["zone"] == active_zone)
+                and (
+                    active_municipality is None or (e["municipality"] or "—") == active_municipality
+                )
+            }
+        )
+        if len(polos_in_scope) > 1 or active_polo:
+            for p in polos_in_scope:
+                href_parts = []
+                if active_zone:
+                    href_parts.append(f"zone={active_zone}")
+                if active_municipality:
+                    href_parts.append(f"municipality={active_municipality}")
+                href_parts.append(f"polo={p}")
+                polo_tabs.append(
+                    {
+                        "label": p.title(),
+                        "href": f"{base}?{'&'.join(href_parts)}",
+                        "active": active_polo == p,
+                    }
+                )
+
+    # Hide the zone row when the batch covers exactly one zone and no narrower
+    # filter is in play — nothing for the user to switch to.
+    if len(zones) == 1 and active_municipality is None and active_polo in (None, "__all"):
+        zone_tabs = []
+
+    return {
+        "zone_tabs": zone_tabs,
+        "municipality_tabs": municipality_tabs,
+        "polo_tabs": polo_tabs,
+    }
 
 
 _MONTH_PT = {
@@ -223,7 +360,15 @@ def _period_options(batch: PoloBatch, view: str) -> list[dict[str, str]]:
     return options
 
 
-def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
+def _render_batch_dashboard(
+    upload_id: str,
+    batch_dir: Path,
+    *,
+    zone: str | None = None,
+    municipality: str | None = None,
+) -> str:
+    from app.core.aggregator import polo_geography
+
     batch = load_batch(batch_dir)
     available_polos = batch.polos
     available_weeks = batch.iso_weeks
@@ -237,16 +382,43 @@ def _render_batch_dashboard(upload_id: str, batch_dir: Path) -> str:
         if view == "weekly"
         else (available_months[-1] if available_months else "")
     )
-    selected_polos = tuple(request.args.getlist("polos")) or tuple(available_polos)
-    selected_polos = tuple(p for p in selected_polos if p in available_polos)
+
+    # Narrow the batch by zone/município before selecting polos so the chart
+    # context only sees the in-scope data. polo_geography is the source of
+    # truth for both axes — reuse here.
+    if zone is not None or municipality is not None:
+        filtered_files = [
+            f
+            for f in batch.files
+            if (zone is None or polo_geography(f)[1] == zone)
+            and (municipality is None or (polo_geography(f)[0] or "—") == municipality)
+        ]
+        scope_polos = tuple({f.polo for f in filtered_files}) or tuple(available_polos)
+    else:
+        scope_polos = tuple(available_polos)
+
+    selected_polos = tuple(request.args.getlist("polos")) or scope_polos
+    selected_polos = tuple(p for p in selected_polos if p in scope_polos)
     if not selected_polos:
-        selected_polos = tuple(available_polos)
+        selected_polos = scope_polos
 
     context = _build_batch_context(batch, selected_polos, view, period)
+    hierarchical = _build_hierarchical_tabs(
+        upload_id,
+        batch,
+        active_zone=zone,
+        active_municipality=municipality,
+        active_polo=None,
+    )
     context.update(
         {
             "download_action": url_for("main.download", upload_id=upload_id),
             "tabs": _build_tabs(upload_id, batch, active_polo="__all"),
+            "zone_tabs": hierarchical["zone_tabs"],
+            "municipality_tabs": hierarchical["municipality_tabs"],
+            "polo_tabs": hierarchical["polo_tabs"],
+            "active_zone": zone,
+            "active_municipality": municipality,
             "active_polo": "__all",
             "polo_query": "polo=__all",
             "available_polos": available_polos,

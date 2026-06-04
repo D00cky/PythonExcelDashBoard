@@ -36,6 +36,17 @@ def test_extract_inspections_returns_empty_frame_when_no_service_sheets(tmp_path
     assert set(df.columns) >= {"team", "tss", "service"}
 
 
+def test_extract_inspections_carries_municipality_column_from_xlsx(tmp_path):
+    """The Município column (xlsx column E) feeds the dashboard's zone
+    drill-down; extraction must surface it on every row."""
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+
+    df = PimentasTemplate().extract_inspections(path)
+
+    assert "municipality" in df.columns
+    assert set(df["municipality"].unique()) == {"Guarulhos"}
+
+
 def test_extract_inspections_counts_conforme_and_nc_per_inspection(tmp_path):
     """conforme_count / nao_conforme_count are 0/1 per OS row.
 

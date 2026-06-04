@@ -179,17 +179,50 @@ def filter_batch(
     return PoloBatch(batch_dir=batch.batch_dir, files=selected)
 
 
+def polo_geography(file: PoloFile) -> tuple[str, str]:
+    """Return ``(municipality, zone)`` for a single PoloFile.
+
+    Municipality is the most-frequent non-empty Município across the file's
+    inspections (real workbooks sometimes carry a stray cell for an adjacent
+    city — picking the mode rather than first/last avoids that noise).
+    Empty when no inspections carry a Município. Zone is derived via the
+    static ``geography.zone_for`` lookup.
+    """
+    from app.core.geography import zone_for
+
+    df = PimentasTemplate().extract_inspections(file.file_path)
+    municipality = ""
+    if not df.empty and "municipality" in df.columns:
+        munis = df["municipality"].dropna().astype(str).str.strip()
+        munis = munis[munis != ""]
+        if not munis.empty:
+            municipality = munis.value_counts().idxmax()
+    return municipality, zone_for(municipality=municipality, polo=file.polo)
+
+
 def combined_inspections(batch: PoloBatch) -> pd.DataFrame:
-    """Concat per-file inspections with an extra ``polo`` column."""
+    """Concat per-file inspections with extra ``polo`` and ``zone`` columns.
+
+    Zone is derived from ``geography.zone_for(municipality, polo)`` per row,
+    so the dashboard can group by zone without re-doing the lookup at every
+    chart-builder call site.
+    """
+    from app.core.geography import zone_for
+
     frames = []
     for f in batch.files:
         df = PimentasTemplate().extract_inspections(f.file_path)
         if df.empty:
             continue
         df = df.assign(polo=f.polo)
+        if "municipality" not in df.columns:
+            df["municipality"] = ""
+        df["zone"] = df.apply(
+            lambda r: zone_for(municipality=r["municipality"], polo=r["polo"]), axis=1
+        )
         frames.append(df)
     if not frames:
-        return pd.DataFrame(columns=["polo"])
+        return pd.DataFrame(columns=["polo", "municipality", "zone"])
     return pd.concat(frames, ignore_index=True)
 
 

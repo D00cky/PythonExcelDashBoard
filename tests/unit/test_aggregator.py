@@ -279,6 +279,35 @@ class TestCombinedInspections:
         )
         assert len(combined_inspections(two_polo_batch)) == expected
 
+    def test_polo_geography_resolves_municipality_and_zone(self, two_polo_batch: PoloBatch) -> None:
+        from app.core.aggregator import polo_geography
+
+        pim = next(f for f in two_polo_batch.files if f.polo == "PIMENTAS")
+        san = next(f for f in two_polo_batch.files if f.polo == "SANTANA")
+
+        muni_pim, zone_pim = polo_geography(pim)
+        muni_san, zone_san = polo_geography(san)
+
+        assert muni_pim == "Guarulhos"
+        assert zone_pim == "Zona Leste Metropolitana"
+        # SANTANA uses the same fixture so its municipality is also Guarulhos
+        # — but the polo-level mapping wins, putting it in Zona Norte.
+        assert zone_san == "Zona Norte"
+        assert muni_san == "Guarulhos"
+
+    def test_adds_zone_column_derived_from_polo_and_municipality(
+        self, two_polo_batch: PoloBatch
+    ) -> None:
+        df = combined_inspections(two_polo_batch)
+
+        assert "zone" in df.columns
+        # PIMENTAS polo lives in Guarulhos → Zona Leste Metropolitana;
+        # SANTANA polo lives in São Paulo capital → Zona Norte.
+        pim_zones = set(df.loc[df["polo"] == "PIMENTAS", "zone"].unique())
+        san_zones = set(df.loc[df["polo"] == "SANTANA", "zone"].unique())
+        assert pim_zones == {"Zona Leste Metropolitana"}
+        assert san_zones == {"Zona Norte"}
+
 
 class TestCombinedStageFailures:
     def test_concatenates_failures_with_polo_column(self, two_polo_batch: PoloBatch) -> None:

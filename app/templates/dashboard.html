@@ -67,6 +67,21 @@
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong>{% if is_filtered %} <em>(filtrado)</em>{% endif %}</div>{% endif %}
     </header>
 
+    {% macro tab_row(items, level_label, accent='#2a9d8f') -%}
+        {% if items %}
+        <nav class="polo-tabs" aria-label="{{ level_label }}" style="display:flex;gap:.3rem;flex-wrap:wrap;margin:.4rem 0;padding-bottom:.3rem;align-items:center;">
+            <span style="font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-right:.4rem;">{{ level_label }}</span>
+            {% for t in items %}
+            <a href="{{ t.href }}" style="padding:.3rem .7rem;border-radius:6px;text-decoration:none;font-size:.85rem;{% if t.active %}background:{{ accent }};color:#fff;font-weight:600;{% else %}background:#f7f9f8;color:#333;border:1px solid #e0e6e4;{% endif %}">{{ t.label }}</a>
+            {% endfor %}
+        </nav>
+        {% endif %}
+    {%- endmacro %}
+
+    {{ tab_row(zone_tabs, 'Zona', '#1f6f8b') }}
+    {{ tab_row(municipality_tabs, 'Município', '#2a9d8f') }}
+    {{ tab_row(polo_tabs, 'Polo', '#4a6b3c') }}
+
     {% if tabs %}
     <nav class="polo-tabs" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:1rem 0;border-bottom:2px solid #e0e6e4;padding-bottom:.5rem;align-items:center;">
         {% for t in tabs %}

@@ -503,6 +503,7 @@ _INSPECTIONS_COLUMNS = (
     "photo_sf",
     "photo_total",
     "start_date",
+    "municipality",
 )
 
 
@@ -540,6 +541,11 @@ def _inspections_cached(path_str: str, mtime_ns: int, services: tuple[str, ...])
         df["start_date"] = (
             pd.to_datetime(df[date_col], errors="coerce") if date_col is not None else pd.NaT
         )
+        # Município is the city the inspection took place in — feeds the
+        # dashboard's zone drill-down. Some older xlsx don't carry it; fall
+        # back to empty string so downstream `groupby` doesn't drop the row.
+        muni_col = _ci_column(df, "Município")
+        df["municipality"] = df[muni_col].astype(str).str.strip() if muni_col is not None else ""
         df = df.rename(columns={team_col: "team", tss_col: "tss"})
         df = df[
             [
@@ -552,6 +558,7 @@ def _inspections_cached(path_str: str, mtime_ns: int, services: tuple[str, ...])
                 "photo_sf",
                 "photo_total",
                 "start_date",
+                "municipality",
             ]
         ].copy()
         df["service"] = service

@@ -3,8 +3,10 @@ from pathlib import Path
 
 from openpyxl import Workbook
 
-# Each row: (team, tss, fachada_stage, sinalizacao_stage, start_date).
+# Each row: (team, tss, fachada_stage, sinalizacao_stage, start_date, municipality).
 # Stage values are 'C', 'NC' or 'SF'. Dates span 2026-03-05 to 2026-03-29.
+# Município mirrors the real xlsx layout where each inspection row carries
+# the city it took place in (used by the dashboard's zone drill-down).
 _INSPECTION_ROWS = {
     "ÁGUA": [
         (
@@ -13,6 +15,7 @@ _INSPECTION_ROWS = {
             "C",
             "C",
             datetime(2026, 3, 5),
+            "Guarulhos",
         ),
         (
             "JOSIAS ALMEIDA FRANCISCO",
@@ -20,27 +23,58 @@ _INSPECTION_ROWS = {
             "C",
             "NC",
             datetime(2026, 3, 12),
+            "Guarulhos",
         ),
-        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "NC", "NC", datetime(2026, 3, 18)),
-        ("LAIS RAMOS SOBRAL", "TROCAR RAMAL DE ÁGUA PREVENTIVA", "C", "SF", datetime(2026, 3, 20)),
+        (
+            "LAIS RAMOS SOBRAL",
+            "TROCAR RAMAL DE ÁGUA PREVENTIVA",
+            "NC",
+            "NC",
+            datetime(2026, 3, 18),
+            "Guarulhos",
+        ),
+        (
+            "LAIS RAMOS SOBRAL",
+            "TROCAR RAMAL DE ÁGUA PREVENTIVA",
+            "C",
+            "SF",
+            datetime(2026, 3, 20),
+            "Guarulhos",
+        ),
         (
             "FERNANDO PEREIRA ASSIS DE LIMA MARTINS",
             "TROCAR RAMAL DE ÁGUA PREVENTIVA",
             "C",
             "NC",
             datetime(2026, 3, 25),
+            "Guarulhos",
         ),
     ],
     "ESGOTO": [
-        ("LAIS RAMOS SOBRAL", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C", datetime(2026, 3, 8)),
+        (
+            "LAIS RAMOS SOBRAL",
+            "TAMPONAR LIGAÇÃO DE ESGOTO",
+            "C",
+            "C",
+            datetime(2026, 3, 8),
+            "Guarulhos",
+        ),
         (
             "FERNANDO PEREIRA ASSIS DE LIMA MARTINS",
             "VAZAMENTO DE ESGOTO",
             "NC",
             "NC",
             datetime(2026, 3, 15),
+            "Guarulhos",
         ),
-        ("JOSIAS ALMEIDA FRANCISCO", "TAMPONAR LIGAÇÃO DE ESGOTO", "C", "C", datetime(2026, 3, 29)),
+        (
+            "JOSIAS ALMEIDA FRANCISCO",
+            "TAMPONAR LIGAÇÃO DE ESGOTO",
+            "C",
+            "C",
+            datetime(2026, 3, 29),
+            "Guarulhos",
+        ),
     ],
 }
 
@@ -113,13 +147,17 @@ def make_minimal_pimentas(
             ws = wb[sheet_name]
             ws["A1"] = "Unidade Executante"
             ws["C1"] = "Descrição TSS"
+            ws["E1"] = "Município"
             ws["L1"] = "Data Início Execução"
             ws["N1"] = "EQUIPE"
             ws["O1"] = "FACHADA"
             ws["Q1"] = "SINALIZAÇÃO"
-            for i, (team, tss, fachada, sinalizacao, start_date) in enumerate(rows, start=2):
+            for i, (team, tss, fachada, sinalizacao, start_date, municipality) in enumerate(
+                rows, start=2
+            ):
                 ws[f"A{i}"] = "TEST"
                 ws[f"C{i}"] = tss
+                ws[f"E{i}"] = municipality
                 ws[f"L{i}"] = start_date
                 ws[f"N{i}"] = team
                 ws[f"O{i}"] = fachada
