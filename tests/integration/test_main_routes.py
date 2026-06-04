@@ -694,6 +694,28 @@ def test_download_docx_style_generic_still_serves_legacy_layout(client, tmp_path
     assert "Dashboard — Polo" in text
 
 
+def test_download_docx_resilient_to_kaleido_chart_failure(client, tmp_path, monkeypatch):
+    """A workbook with ~4.6k inspections used to make kaleido OOM/crash inside
+    render_dashboard_chart_pngs, and the uncaught exception produced a blank
+    download. The exporter must now degrade gracefully: missing charts, but a
+    valid .docx body."""
+    import plotly.graph_objects as go
+
+    def boom(self, *a, **kw):
+        raise RuntimeError("kaleido crashed")
+
+    monkeypatch.setattr(go.Figure, "to_image", boom)
+
+    upload_id = _upload_minimal(client, tmp_path)
+    response = client.get(f"/download/{upload_id}?fmt=docx")
+
+    assert response.status_code == 200
+    assert "wordprocessingml.document" in response.headers["Content-Type"]
+    assert response.data[:2] == b"PK"
+    # The Mensal skeleton alone is ~3.8 MB even with every chart slot blank.
+    assert len(response.data) > 1_000_000
+
+
 def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):
     """?fmt=docx&style=sabesp_mensal returns the Sabesp Mensal report with
     the upload's polo name and inspection dates bound into the template."""

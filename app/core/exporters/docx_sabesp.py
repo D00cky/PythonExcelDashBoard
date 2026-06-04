@@ -16,6 +16,7 @@ and returns the rendered bytes.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
@@ -26,6 +27,8 @@ from docxtpl import DocxTemplate, InlineImage
 
 from app.core.aggregator import date_bounds, ic_rows_from_inspections, iqs_rows_from_inspections
 from app.core.templates.pimentas import PimentasTemplate
+
+logger = logging.getLogger(__name__)
 
 _SKELETON_DIR = Path(__file__).resolve().parent.parent / "templates" / "docx_skeletons"
 MENSAL_SKELETON_PATH = _SKELETON_DIR / "mensal_sabesp.docx"
@@ -149,8 +152,17 @@ def render_dashboard_chart_pngs(
         "build_photo_conformity_stacked": (iqs_rows,),
     }
     for key, builder_name in _DASHBOARD_CHART_BUILDERS:
-        fig = getattr(template, builder_name)(*builder_args[builder_name])
-        chart_pngs[key] = fig.to_image(format="png", width=900, height=400, scale=1.5)
+        # Kaleido can OOM or crash on large workbooks (the reported bug:
+        # ~4.6k inspections across 6 service sheets returned a blank .docx
+        # because the exception escaped this function). Fall back to b"" per
+        # chart so render_mensal's `if png:` guard drops only the failing
+        # placeholder — the rest of the report still ships.
+        try:
+            fig = getattr(template, builder_name)(*builder_args[builder_name])
+            chart_pngs[key] = fig.to_image(format="png", width=900, height=400, scale=1.5)
+        except Exception as exc:
+            logger.warning("dashboard chart %s failed to render: %s", key, exc)
+            chart_pngs[key] = b""
     return chart_pngs
 
 

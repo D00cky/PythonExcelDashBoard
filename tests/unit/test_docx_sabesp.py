@@ -5,6 +5,7 @@ from docx import Document
 from openpyxl import load_workbook
 
 from app.core.exporters.docx_sabesp import (
+    MENSAL_SKELETON_PATH,
     SEMANAL_SKELETON_PATH,
     IndiceRow,
     MensalContext,
@@ -266,6 +267,54 @@ def test_context_from_template_populates_chart_pngs_for_section_8_1(tmp_path):
     for key, png in ctx.chart_pngs.items():
         assert png[:8] == b"\x89PNG\r\n\x1a\n", f"{key} should be a PNG"
         assert len(png) > 1024
+
+
+def test_context_from_template_returns_empty_chart_pngs_on_kaleido_failure(tmp_path, monkeypatch):
+    """Kaleido can OOM or crash on large workbooks (~4.6k inspections in the
+    bug report). The exporter must degrade to empty PNG bytes — render_mensal
+    skips empty pngs — instead of letting the exception bubble out and produce
+    a blank HTTP response.
+    """
+    import plotly.graph_objects as go
+
+    def boom(self, *a, **kw):
+        raise RuntimeError("kaleido crashed")
+
+    monkeypatch.setattr(go.Figure, "to_image", boom)
+
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = context_from_template(template, path)
+
+    assert set(ctx.chart_pngs) == {"ic_bar", "iqs_bar", "photo_conformity"}
+    for key, png in ctx.chart_pngs.items():
+        assert png == b"", f"{key} should fall back to empty bytes, got {len(png)}"
+
+
+def test_render_mensal_skips_empty_chart_pngs_without_error():
+    """Regression guard for the `if png:` branch in render_mensal: empty bytes
+    for a chart placeholder must render cleanly with no InlineImage added and
+    no Jinja-undefined error."""
+    ctx = MensalContext(
+        polo_label="Pimentas",
+        periodo_inicio="06/05/2026",
+        periodo_fim="12/05/2026",
+        mes_extenso="Maio",
+        ano="2026",
+        chart_pngs={"ic_bar": b"", "iqs_bar": b"", "photo_conformity": b""},
+    )
+
+    skeleton = Document(str(MENSAL_SKELETON_PATH))
+    baseline = sum("image" in r.reltype for r in skeleton.part.rels.values())
+
+    body = render_mensal(ctx)
+    assert body[:2] == b"PK"
+    doc = Document(BytesIO(body))
+    rendered = sum("image" in r.reltype for r in doc.part.rels.values())
+    # No new image relationships when every chart png is empty.
+    assert rendered == baseline
 
 
 def test_render_mensal_embeds_chart_images_under_section_8_1(tmp_path):
