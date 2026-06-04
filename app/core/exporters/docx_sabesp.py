@@ -25,7 +25,13 @@ import pandas as pd
 from docx.shared import Mm
 from docxtpl import DocxTemplate, InlineImage
 
-from app.core.aggregator import date_bounds, ic_rows_from_inspections, iqs_rows_from_inspections
+from app.core.aggregator import (
+    PoloBatch,
+    combined_inspections,
+    date_bounds,
+    ic_rows_from_inspections,
+    iqs_rows_from_inspections,
+)
 from app.core.templates.pimentas import PimentasTemplate
 
 logger = logging.getLogger(__name__)
@@ -203,30 +209,50 @@ def render_semanal(context: SemanalContext, *, skeleton: Path = SEMANAL_SKELETON
     return buf.getvalue()
 
 
-def indice_rows_from_inspections(inspections: pd.DataFrame) -> tuple[IndiceRow, ...]:
+def indice_rows_from_inspections(
+    inspections: pd.DataFrame, *, group_by_polo: bool = False
+) -> tuple[IndiceRow, ...]:
     """Aggregate inspections into (team × service) IC% rows for the tecnológico table.
 
     A row is dropped when neither conforme nor não-conforme inspections exist for that
     (team, service) — those are zero-quantity entries that would clutter the table.
+
+    When ``group_by_polo`` is set and a ``polo`` column exists, rows additionally
+    split by polo and the ``equipe`` field is prefixed with the polo title — used
+    by aggregate batch reports where the same team name in two polos would
+    otherwise collapse and lose identity.
     """
     required = {"team", "service", "conforme_count", "nao_conforme_count"}
     if inspections.empty or not required.issubset(inspections.columns):
         return ()
-    grouped = inspections.groupby(["team", "service"], dropna=True).agg(
+    include_polo = group_by_polo and "polo" in inspections.columns
+    group_cols = ["polo", "team", "service"] if include_polo else ["team", "service"]
+    grouped = inspections.groupby(group_cols, dropna=True).agg(
         conforme=("conforme_count", "sum"),
         nao_conforme=("nao_conforme_count", "sum"),
     )
     rows: list[IndiceRow] = []
-    for (team, service), agg in grouped.iterrows():
+    for key, agg in grouped.iterrows():
+        if include_polo:
+            polo, team, service = key
+        else:
+            team, service = key
+            polo = None
         conforme = int(agg["conforme"])
         nao_conforme = int(agg["nao_conforme"])
         total = conforme + nao_conforme
         if total == 0:
             continue
         ic_pct = (conforme / total) * 100
+        team_label = str(team).title() if isinstance(team, str) else str(team)
+        if polo is not None:
+            polo_label = str(polo).title() if isinstance(polo, str) else str(polo)
+            equipe = f"{polo_label} — {team_label}"
+        else:
+            equipe = team_label
         rows.append(
             IndiceRow(
-                equipe=str(team).title() if isinstance(team, str) else str(team),
+                equipe=equipe,
                 servico=str(service).title() if isinstance(service, str) else str(service),
                 quantidade=total,
                 ic_pct_str=f"{ic_pct:.2f}".replace(".", ","),
@@ -246,8 +272,8 @@ def _period_fields(inspections: pd.DataFrame) -> tuple[str, str, str, str]:
         return "", "", "", ""
     start, end = bounds
     return (
-        f"{start:%d/%m/%Y}",
-        f"{end:%d/%m/%Y}",
+        f"{start:%m-%d-%Y}",
+        f"{end:%m-%d-%Y}",
         _MONTH_PT.get(int(end.month), ""),
         f"{end.year}",
     )
@@ -267,6 +293,47 @@ def context_from_template(template: PimentasTemplate, path: Path) -> MensalConte
         mes_extenso=mes_extenso,
         ano=ano,
         indice_tecnologico=indice_rows_from_inspections(inspections),
+        chart_pngs=render_dashboard_chart_pngs(template, iqs_rows, ic_rows),
+    )
+
+
+def _batch_polo_label(polos: list[str]) -> str:
+    """Cover-page polo label for a multi-polo batch report.
+
+    Single-polo batch → that polo's title-cased name (matches single-Polo report).
+    Multi-polo → ``"Polos: A, B, C"`` so reviewers see the full scope at a glance.
+    """
+    if not polos:
+        return ""
+    if len(polos) == 1:
+        return polos[0].title()
+    return "Polos: " + ", ".join(p.title() for p in polos)
+
+
+def batch_context_from_batch(batch: PoloBatch) -> MensalContext:
+    """Aggregate every file in ``batch`` into one Sabesp Mensal context.
+
+    The cover page surfaces every polo via ``polo_label``; the §6.4 indice
+    table polo-prefixes equipe names so duplicate team names across polos
+    stay distinguishable; §8.1 charts feed off the combined inspections.
+
+    Mirrors the single-Polo ``context_from_template`` shape so ``render_mensal``
+    needs no changes — the only difference is data scope.
+    """
+    inspections = combined_inspections(batch)
+    periodo_inicio, periodo_fim, mes_extenso, ano = _period_fields(inspections)
+    template = PimentasTemplate()
+    services = sorted(template.SERVICE_SHEETS)
+    iqs_rows = iqs_rows_from_inspections(inspections, services)
+    ic_rows = ic_rows_from_inspections(inspections, services)
+    polos = batch.polos
+    return MensalContext(
+        polo_label=_batch_polo_label(polos),
+        periodo_inicio=periodo_inicio,
+        periodo_fim=periodo_fim,
+        mes_extenso=mes_extenso,
+        ano=ano,
+        indice_tecnologico=indice_rows_from_inspections(inspections, group_by_polo=len(polos) > 1),
         chart_pngs=render_dashboard_chart_pngs(template, iqs_rows, ic_rows),
     )
 

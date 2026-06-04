@@ -240,6 +240,43 @@ def test_batch_download_docx_combined(client, tmp_path):
     assert "SANTANA" in document_xml.upper()
 
 
+def test_batch_download_docx_uses_sabesp_mensal_aggregating_all_polos(client, tmp_path):
+    """Default batch docx download (no ?style, no ?polo) must produce a single
+    Sabesp Mensal report aggregating every uploaded polo — not the legacy
+    "Dashboard — Polo Múltiplos Polos" generic layout."""
+    from io import BytesIO
+
+    from docx import Document
+
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/download/{batch_id}?fmt=docx")
+
+    assert response.status_code == 200
+    assert "wordprocessingml" in response.mimetype
+    doc = Document(BytesIO(response.data))
+    text = "\n".join(
+        [p.text for p in doc.paragraphs]
+        + [cell.text for tbl in doc.tables for row in tbl.rows for cell in row.cells]
+    )
+
+    # Sabesp Mensal headings — the legacy generic layout starts with
+    # "Dashboard — Polo Múltiplos Polos" and has no OBJETO/INTRODUÇÃO.
+    assert "OBJETO" in text or "INTRODUÇÃO" in text
+    assert "Dashboard — Polo" not in text
+
+    # Polo label lists every uploaded polo.
+    assert "Pimentas" in text
+    assert "Santana" in text
+
+    # Indice rows are polo-prefixed so reviewers can distinguish teams that
+    # share a name across polos.
+    indice_table = next(t for t in doc.tables if "ÍNDICE TECNOLÓGICO" in t.rows[0].cells[0].text)
+    indice_text = "\n".join(cell.text for row in indice_table.rows[3:] for cell in row.cells)
+    assert "Pimentas —" in indice_text
+    assert "Santana —" in indice_text
+
+
 def test_batch_download_pdf_combined(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
@@ -588,7 +625,7 @@ def test_dashboard_renders_pimentas_kpis_and_two_figures(client, tmp_path):
     body = response.data.decode("utf-8")
     # Fixture inspections span 2026-03-05..2026-03-29; that becomes the period
     # (CAPA's stated 'à 31/03/2026' is overridden when inspection dates exist).
-    assert "05/03/2026 à 29/03/2026" in body
+    assert "03-05-2026 à 03-29-2026" in body
     assert "66.1%" in body
     assert "Polo Pimentas" in body
     # 5 top-level figures + 2 NC focus figures + 4 services × (team + tss) = 15
@@ -629,7 +666,7 @@ def test_download_md_returns_markdown_summary(client, tmp_path):
     body = response.data.decode("utf-8")
     assert body.startswith("# Dashboard")
     assert "Polo Pimentas" in body
-    assert "05/03/2026 à 29/03/2026" in body
+    assert "03-05-2026 à 03-29-2026" in body
 
 
 def test_download_xlsx_returns_openxml_workbook(client, tmp_path):
@@ -739,8 +776,8 @@ def test_download_docx_sabesp_mensal_renders_skeleton(client, tmp_path):
     # Polo name from the fixture (PIMENTAS) and fixture date range bind in.
     assert "Pimentas" in text
     assert "PIMENTAS" in text
-    assert "05/03/2026" in text
-    assert "29/03/2026" in text
+    assert "03-05-2026" in text
+    assert "03-29-2026" in text
     assert "Março de 2026" in text
     # Original source-template polo must not leak.
     assert "Gopouva" not in text
@@ -780,12 +817,12 @@ def test_download_docx_sabesp_semanal_renders_skeleton(client, tmp_path):
     )
     # Polo name from the fixture and fixture date range bind in.
     assert "PIMENTAS" in text
-    assert "05/03/2026" in text
-    assert "29/03/2026" in text
+    assert "03-05-2026" in text
+    assert "03-29-2026" in text
     # Source-template values must not leak.
     assert "EXTREMO NORTE" not in text
-    assert "01/03/2026" not in text
-    assert "25/03/2026" not in text
+    assert "03-01-2026" not in text
+    assert "03-25-2026" not in text
     # No unrendered Jinja markers.
     assert "{{" not in text
 
@@ -879,7 +916,7 @@ def test_dashboard_date_filter_restricts_period_and_inspections(client, tmp_path
     assert "(filtrado)" in body
     # Within 2026-03-15..2026-03-25 the surviving rows span 15/03 (ESGOTO row)
     # to 25/03 (ÁGUA / FERNANDO row).
-    assert "15/03/2026 à 25/03/2026" in body
+    assert "03-15-2026 à 03-25-2026" in body
     assert 'value="2026-03-15"' in body
     assert 'value="2026-03-25"' in body
 
@@ -978,7 +1015,7 @@ def test_dashboard_swap_param_corrects_inverted_day_month(client, tmp_path):
     assert response.status_code == 200
     # Three rows stored as 2026-01-05 should swap to 2026-05-01 (target = May).
     # The unambiguous 2026-05-25 stays. Period: 01/05/2026 à 25/05/2026.
-    assert "01/05/2026 à 25/05/2026" in body
+    assert "05-01-2026 à 05-25-2026" in body
     assert "dia/mês corrigido" in body
     assert "recalculados" in body
 
@@ -995,7 +1032,7 @@ def test_dashboard_swap_does_not_break_already_correct_files(client, tmp_path):
     # Fixture target month is March (day=29 unambiguous). Swap candidates would
     # only flip rows where day == 3 → there are none in the fixture, so the
     # period is identical to the unswapped case.
-    assert "05/03/2026 à 29/03/2026" in body
+    assert "03-05-2026 à 03-29-2026" in body
 
 
 def test_dashboard_recomputes_kpis_when_filter_active(client, tmp_path):

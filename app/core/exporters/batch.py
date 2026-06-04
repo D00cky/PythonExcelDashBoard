@@ -42,7 +42,13 @@ class BatchSelection:
     period_key: str
 
 
-def render_batch_export(fmt: str, batch: PoloBatch, selection: BatchSelection) -> tuple[bytes, str]:
+def render_batch_export(
+    fmt: str,
+    batch: PoloBatch,
+    selection: BatchSelection,
+    *,
+    style: str | None = None,
+) -> tuple[bytes, str]:
     if fmt not in _BATCH_MIMETYPES:
         raise ValueError(f"unsupported batch format: {fmt}")
 
@@ -59,7 +65,7 @@ def render_batch_export(fmt: str, batch: PoloBatch, selection: BatchSelection) -
     elif fmt == "html":
         body = _render_html(filtered, selection, inspections)
     elif fmt == "docx":
-        body = _render_docx(selection, inspections)
+        body = _render_docx(selection, inspections, filtered=filtered, style=style)
     elif fmt == "pdf":
         body = _render_pdf(selection, inspections)
     return body, _BATCH_MIMETYPES[fmt]
@@ -80,10 +86,25 @@ def _build_payload_kwargs(selection: BatchSelection, inspections: pd.DataFrame) 
     )
 
 
-def _render_docx(selection: BatchSelection, inspections: pd.DataFrame) -> bytes:
-    from app.core.exporters.docx import render_docx_from_data
+def _render_docx(
+    selection: BatchSelection,
+    inspections: pd.DataFrame,
+    *,
+    filtered: PoloBatch,
+    style: str | None,
+) -> bytes:
+    """Render a batch docx. Defaults to the Sabesp Mensal aggregate (mirrors
+    the single-Polo default at /download/<id>?fmt=docx). The legacy generic
+    dashboard layout stays available via ``?style=generic``.
+    """
+    if style == "generic":
+        from app.core.exporters.docx import render_docx_from_data
 
-    return render_docx_from_data(**_build_payload_kwargs(selection, inspections))
+        return render_docx_from_data(**_build_payload_kwargs(selection, inspections))
+
+    from app.core.exporters.docx_sabesp import batch_context_from_batch, render_mensal
+
+    return render_mensal(batch_context_from_batch(filtered))
 
 
 def _render_pdf(selection: BatchSelection, inspections: pd.DataFrame) -> bytes:

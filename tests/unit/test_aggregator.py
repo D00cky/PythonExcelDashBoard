@@ -53,9 +53,9 @@ class TestDateBounds:
 
 
 class TestFormatPeriodPt:
-    def test_renders_dd_mm_yyyy_label(self) -> None:
+    def test_renders_mm_dd_yyyy_label(self) -> None:
         bounds = (pd.Timestamp("2026-03-05"), pd.Timestamp("2026-03-29"))
-        assert format_period_pt(bounds) == "05/03/2026 à 29/03/2026"
+        assert format_period_pt(bounds) == "03-05-2026 à 03-29-2026"
 
     def test_returns_none_for_none_input_so_callers_can_chain(self) -> None:
         # Designed so consumers can write: format_period_pt(date_bounds(df))

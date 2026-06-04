@@ -89,13 +89,19 @@ def date_bounds(df: pd.DataFrame) -> tuple[pd.Timestamp, pd.Timestamp] | None:
 
 
 def format_period_pt(bounds: tuple[pd.Timestamp, pd.Timestamp] | None) -> str | None:
-    """Render a date-bounds tuple as the pt-BR period label ``"dd/mm/yyyy à
-    dd/mm/yyyy"``. Returns ``None`` for ``None`` input so callers can chain
-    ``format_period_pt(date_bounds(df))`` and propagate the missing-data sentinel."""
+    """Render a date-bounds tuple as the period label ``"MM-DD-YYYY à
+    MM-DD-YYYY"``. Returns ``None`` for ``None`` input so callers can chain
+    ``format_period_pt(date_bounds(df))`` and propagate the missing-data sentinel.
+
+    Date format is MM-DD-YYYY with hyphens (deliberate house style, picked
+    after readers reported the legacy dd/mm/yyyy display getting confused
+    with mm/dd/yyyy elsewhere in the report — hyphenated MM-DD-YYYY removes
+    the ambiguity).
+    """
     if bounds is None:
         return None
     start, end = bounds
-    return f"{start:%d/%m/%Y} à {end:%d/%m/%Y}"
+    return f"{start:%m-%d-%Y} à {end:%m-%d-%Y}"
 
 
 def _period_from_inspections(

@@ -213,7 +213,7 @@ def _period_options(batch: PoloBatch, view: str) -> list[dict[str, str]]:
             if f.iso_week in seen:
                 continue
             seen.add(f.iso_week)
-            label = f"{f.iso_week} · {f.period_start:%d/%m} a {f.period_end:%d/%m/%Y}"
+            label = f"{f.iso_week} · {f.period_start:%m-%d} a {f.period_end:%m-%d-%Y}"
             options.append({"key": f.iso_week, "label": label})
         return options
     options = []
@@ -553,7 +553,7 @@ def _download_batch(upload_id: str, batch_dir: Path, fmt: str) -> Response:
         polos = tuple(batch.polos)
 
     selection = BatchSelection(polos=polos, view=view, period_key=period)
-    body, mimetype = render_batch_export(fmt, batch, selection)
+    body, mimetype = render_batch_export(fmt, batch, selection, style=_docx_style_arg())
     response = Response(body, mimetype=mimetype)
     response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
     return response
@@ -768,12 +768,12 @@ def _date_span_warning(
     if swapped:
         return (
             f"Datas com dia/mês invertidos: {span_days} dias "
-            f"({start:%d/%m/%Y} → {end:%d/%m/%Y}). O resultado ainda parece "
+            f"({start:%m-%d-%Y} → {end:%m-%d-%Y}). O resultado ainda parece "
             "incorreto; verifique a planilha original."
         )
     return (
         f"Atenção: as datas das inspeções abrangem {span_days} dias "
-        f"({start:%d/%m/%Y} → {end:%d/%m/%Y}). Isso pode indicar dia/mês "
+        f"({start:%m-%d-%Y} → {end:%m-%d-%Y}). Isso pode indicar dia/mês "
         "trocados na planilha original."
     )
 

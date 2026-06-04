@@ -4,12 +4,14 @@ import pytest
 from docx import Document
 from openpyxl import load_workbook
 
+from app.core.aggregator import PoloBatch, PoloFile
 from app.core.exporters.docx_sabesp import (
     MENSAL_SKELETON_PATH,
     SEMANAL_SKELETON_PATH,
     IndiceRow,
     MensalContext,
     SemanalContext,
+    batch_context_from_batch,
     context_from_template,
     indice_rows_from_inspections,
     render_mensal,
@@ -33,8 +35,8 @@ def _all_text(doc):
 def test_render_mensal_substitutes_polo_and_period():
     ctx = MensalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
         mes_extenso="Maio",
         ano="2026",
     )
@@ -46,8 +48,8 @@ def test_render_mensal_substitutes_polo_and_period():
     text = _all_text(doc)
     assert "Pimentas" in text
     assert "PIMENTAS" in text
-    assert "06/05/2026" in text
-    assert "12/05/2026" in text
+    assert "05-06-2026" in text
+    assert "05-12-2026" in text
     assert "Maio de 2026" in text
     # No source polo name should leak through.
     assert "Gopoúva" not in text
@@ -60,8 +62,8 @@ def test_render_mensal_substitutes_polo_and_period():
 def test_render_mensal_polo_label_upper_derived_from_polo_label():
     ctx = MensalContext(
         polo_label="Santana",
-        periodo_inicio="01/06/2026",
-        periodo_fim="07/06/2026",
+        periodo_inicio="06-01-2026",
+        periodo_fim="06-07-2026",
         mes_extenso="Junho",
         ano="2026",
     )
@@ -76,8 +78,8 @@ def test_context_from_template_uses_inspection_date_bounds(tmp_path):
     ctx = context_from_template(template, path)
 
     # Fixture dates span 2026-03-05 to 2026-03-29 — period text and month should reflect that.
-    assert ctx.periodo_inicio == "05/03/2026"
-    assert ctx.periodo_fim == "29/03/2026"
+    assert ctx.periodo_inicio == "03-05-2026"
+    assert ctx.periodo_fim == "03-29-2026"
     assert ctx.mes_extenso == "Março"
     assert ctx.ano == "2026"
     assert ctx.polo_label == "Pimentas"
@@ -125,8 +127,8 @@ def test_render_mensal_strips_manual_audit_sections():
     those headings nor their characteristic content."""
     ctx = MensalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
         mes_extenso="Maio",
         ano="2026",
     )
@@ -155,8 +157,8 @@ def test_render_mensal_keeps_digital_surveillance_sections():
     subsections, and §9 CONCLUSÃO."""
     ctx = MensalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
         mes_extenso="Maio",
         ano="2026",
     )
@@ -179,8 +181,8 @@ def test_render_mensal_keeps_digital_surveillance_sections():
 def test_render_mensal_indice_table_repeats_one_row_per_supplied_entry():
     ctx = MensalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
         mes_extenso="Maio",
         ano="2026",
         indice_tecnologico=(
@@ -205,8 +207,8 @@ def test_render_mensal_indice_table_repeats_one_row_per_supplied_entry():
 def test_render_mensal_indice_table_collapses_to_zero_rows_when_empty():
     ctx = MensalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
         mes_extenso="Maio",
         ano="2026",
         indice_tecnologico=(),
@@ -299,8 +301,8 @@ def test_render_mensal_skips_empty_chart_pngs_without_error():
     no Jinja-undefined error."""
     ctx = MensalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
         mes_extenso="Maio",
         ano="2026",
         chart_pngs={"ic_bar": b"", "iqs_bar": b"", "photo_conformity": b""},
@@ -342,8 +344,8 @@ def test_render_mensal_embeds_chart_images_under_section_8_1(tmp_path):
 def test_render_semanal_substitutes_polo_and_period_in_cover_table():
     ctx = SemanalContext(
         polo_label="Pimentas",
-        periodo_inicio="06/05/2026",
-        periodo_fim="12/05/2026",
+        periodo_inicio="05-06-2026",
+        periodo_fim="05-12-2026",
     )
 
     body = render_semanal(ctx)
@@ -353,12 +355,12 @@ def test_render_semanal_substitutes_polo_and_period_in_cover_table():
     # The cover table is doc.tables[0]; row 20 cell 1 is the period line,
     # row 34 cell 1 is the POLO line. Other merged cells hold duplicates.
     text = _all_text(doc)
-    assert "06/05/2026" in text
-    assert "12/05/2026" in text
+    assert "05-06-2026" in text
+    assert "05-12-2026" in text
     assert "PIMENTAS" in text
     # Source-template values must not leak.
-    assert "01/03/2026" not in text
-    assert "25/03/2026" not in text
+    assert "03-01-2026" not in text
+    assert "03-25-2026" not in text
     assert "EXTREMO NORTE" not in text
     # No unrendered Jinja markers.
     assert "{{" not in text
@@ -367,8 +369,8 @@ def test_render_semanal_substitutes_polo_and_period_in_cover_table():
 def test_semanal_context_polo_label_upper_derived_from_polo_label():
     ctx = SemanalContext(
         polo_label="Santana",
-        periodo_inicio="04/05/2026",
-        periodo_fim="10/05/2026",
+        periodo_inicio="05-04-2026",
+        periodo_fim="05-10-2026",
     )
     assert ctx.polo_label_upper == "SANTANA"
     assert "polo_label_upper" in ctx.as_render_dict()
@@ -382,8 +384,8 @@ def test_semanal_context_from_template_uses_inspection_date_bounds(tmp_path):
     ctx = semanal_context_from_template(template, path)
 
     # Fixture inspections span 2026-03-05 to 2026-03-29.
-    assert ctx.periodo_inicio == "05/03/2026"
-    assert ctx.periodo_fim == "29/03/2026"
+    assert ctx.periodo_inicio == "03-05-2026"
+    assert ctx.periodo_fim == "03-29-2026"
     assert ctx.polo_label == "Pimentas"
 
 
@@ -413,6 +415,141 @@ def test_semanal_context_from_template_populates_chart_pngs(tmp_path):
     for key, png in ctx.chart_pngs.items():
         assert png[:8] == b"\x89PNG\r\n\x1a\n", f"{key} should be a PNG"
         assert len(png) > 1024
+
+
+def _batch_with_two_polos(tmp_path) -> PoloBatch:
+    """Build an in-memory PoloBatch with two minimal Pimentas-shaped fixtures
+    sharing the same fixture period but tagged with different polo names. The
+    Sabesp Mensal aggregator only cares about file_path + polo on each PoloFile,
+    so iso_week/month/period_start/end use the fixture's own dates."""
+    from datetime import date
+
+    pim = make_minimal_pimentas(
+        tmp_path, polo="PIMENTAS", with_inspections=True, file_name="pim.xlsx"
+    )
+    san = make_minimal_pimentas(
+        tmp_path, polo="SANTANA", with_inspections=True, file_name="san.xlsx"
+    )
+    files = [
+        PoloFile(
+            file_path=pim,
+            polo="pimentas",
+            iso_week="2026-W10",
+            month="2026-03",
+            period_start=date(2026, 3, 5),
+            period_end=date(2026, 3, 29),
+        ),
+        PoloFile(
+            file_path=san,
+            polo="santana",
+            iso_week="2026-W10",
+            month="2026-03",
+            period_start=date(2026, 3, 5),
+            period_end=date(2026, 3, 29),
+        ),
+    ]
+    return PoloBatch(batch_dir=tmp_path, files=files)
+
+
+def test_batch_context_from_batch_uses_combined_inspections_period(tmp_path):
+    batch = _batch_with_two_polos(tmp_path)
+
+    ctx = batch_context_from_batch(batch)
+
+    # Period derived from combined inspections (fixture spans 03-05 → 03-29).
+    assert ctx.periodo_inicio == "03-05-2026"
+    assert ctx.periodo_fim == "03-29-2026"
+    assert ctx.mes_extenso == "Março"
+    assert ctx.ano == "2026"
+
+
+def test_batch_context_polo_label_lists_all_polos_when_multiple(tmp_path):
+    batch = _batch_with_two_polos(tmp_path)
+
+    ctx = batch_context_from_batch(batch)
+
+    # Multi-polo batch surfaces every polo in the label so the cover page shows
+    # the full scope at a glance instead of the legacy "Múltiplos Polos".
+    assert "Pimentas" in ctx.polo_label
+    assert "Santana" in ctx.polo_label
+    assert ctx.polo_label.startswith("Polos:")
+
+
+def test_batch_context_polo_label_uses_single_name_for_single_polo_batch(tmp_path):
+    from datetime import date
+
+    pim = make_minimal_pimentas(
+        tmp_path, polo="PIMENTAS", with_inspections=True, file_name="solo.xlsx"
+    )
+    batch = PoloBatch(
+        batch_dir=tmp_path,
+        files=[
+            PoloFile(
+                file_path=pim,
+                polo="pimentas",
+                iso_week="2026-W10",
+                month="2026-03",
+                period_start=date(2026, 3, 5),
+                period_end=date(2026, 3, 29),
+            )
+        ],
+    )
+
+    ctx = batch_context_from_batch(batch)
+
+    assert ctx.polo_label == "Pimentas"
+
+
+def test_batch_context_populates_chart_pngs_for_aggregate_summary(tmp_path):
+    batch = _batch_with_two_polos(tmp_path)
+
+    ctx = batch_context_from_batch(batch)
+
+    # Same three §8.1 charts as the single-Polo Mensal, fed by combined data.
+    assert set(ctx.chart_pngs) == {"ic_bar", "iqs_bar", "photo_conformity"}
+    for key, png in ctx.chart_pngs.items():
+        assert png[:8] == b"\x89PNG\r\n\x1a\n", f"{key} should be a PNG"
+
+
+def test_batch_context_indice_rows_prefix_team_with_polo(tmp_path):
+    batch = _batch_with_two_polos(tmp_path)
+
+    ctx = batch_context_from_batch(batch)
+
+    # Two polos share the same fixture team names; the aggregate indice must
+    # disambiguate by prefixing the polo so reviewers can tell rows apart.
+    equipes = [r.equipe for r in ctx.indice_tecnologico]
+    assert equipes, "indice should be populated"
+    pimentas_rows = [e for e in equipes if e.startswith("Pimentas")]
+    santana_rows = [e for e in equipes if e.startswith("Santana")]
+    assert pimentas_rows, f"expected Pimentas-prefixed rows, got {equipes}"
+    assert santana_rows, f"expected Santana-prefixed rows, got {equipes}"
+
+
+def test_indice_rows_from_inspections_group_by_polo_disambiguates_teams():
+    """Direct unit test of the group_by_polo flag — bypasses the batch
+    plumbing so the prefixing rule itself stays pinned."""
+    import pandas as pd
+
+    df = pd.DataFrame(
+        {
+            "polo": ["pimentas", "pimentas", "santana", "santana"],
+            "team": ["Ana", "Ana", "Ana", "Ana"],
+            "service": ["Água", "Esgoto", "Água", "Esgoto"],
+            "conforme_count": [10, 8, 4, 12],
+            "nao_conforme_count": [2, 4, 6, 0],
+        }
+    )
+
+    rows_flat = indice_rows_from_inspections(df)
+    rows_by_polo = indice_rows_from_inspections(df, group_by_polo=True)
+
+    # Without the flag, Pimentas + Santana collapse into 2 (Ana, Água) and
+    # (Ana, Esgoto) rows — the polo identity is lost.
+    assert {r.equipe for r in rows_flat} == {"Ana"}
+    # With the flag, each polo's Ana gets a distinct row.
+    equipes = {r.equipe for r in rows_by_polo}
+    assert equipes == {"Pimentas — Ana", "Santana — Ana"}
 
 
 def test_render_semanal_embeds_chart_images(tmp_path):
