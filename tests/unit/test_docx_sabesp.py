@@ -5,6 +5,7 @@ from docx import Document
 from openpyxl import load_workbook
 
 from app.core.exporters.docx_sabesp import (
+    SEMANAL_SKELETON_PATH,
     IndiceRow,
     MensalContext,
     SemanalContext,
@@ -348,3 +349,41 @@ def test_semanal_context_from_template_handles_workbook_without_inspections(tmp_
     assert ctx.polo_label == "Pimentas"
     assert ctx.periodo_inicio == ""
     assert ctx.periodo_fim == ""
+
+
+def test_semanal_context_from_template_populates_chart_pngs(tmp_path):
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = semanal_context_from_template(template, path)
+
+    # Same three dashboard charts as Mensal — ic_bar under §1.1.1, iqs_bar +
+    # photo_conformity under §2.
+    assert set(ctx.chart_pngs) == {"ic_bar", "iqs_bar", "photo_conformity"}
+    for key, png in ctx.chart_pngs.items():
+        assert png[:8] == b"\x89PNG\r\n\x1a\n", f"{key} should be a PNG"
+        assert len(png) > 1024
+
+
+def test_render_semanal_embeds_chart_images(tmp_path):
+    path = make_minimal_pimentas(tmp_path, with_inspections=True)
+    wb = load_workbook(path, data_only=True, read_only=True)
+    template = PimentasTemplate.detect(wb.sheetnames)
+
+    ctx = semanal_context_from_template(template, path)
+    body = render_semanal(ctx)
+
+    # The skeleton already carries dozens of cover-page logos and body
+    # screenshots; the assertion that matters is *delta*: three new image
+    # relationships beyond the skeleton baseline, one per embedded chart.
+    skeleton = Document(str(SEMANAL_SKELETON_PATH))
+    baseline = sum("image" in r.reltype for r in skeleton.part.rels.values())
+
+    doc = Document(BytesIO(body))
+    rendered = sum("image" in r.reltype for r in doc.part.rels.values())
+    assert rendered == baseline + 3
+
+    text = _all_text(doc)
+    for key in ("ic_bar", "iqs_bar", "photo_conformity"):
+        assert "{{ " + key not in text

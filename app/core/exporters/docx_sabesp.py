@@ -8,9 +8,10 @@ and returns the rendered bytes.
 - Mensal: scoped to digital surveillance — cover, §1 INTRODUÇÃO, §6.4 with the
   ÍNDICE TECNOLÓGICO POR EQUIPE table (xlsx-derived), §8 ACOMPANHAMENTO – OLHAR
   DIGITAL with dashboard charts embedded as inline images, §9 CONCLUSÃO.
-- Semanal: cover-page-only. The structural body is intentionally empty in the
-  source — auditors paste per-service charts/screenshots manually. Only polo +
-  period bind.
+- Semanal: cover-page bindings (polo + period) plus the same §8.1-style
+  dashboard charts as Mensal — ic_bar under §1.1.1, iqs_bar and
+  photo_conformity under §2 IQS. Per-service body sections (§2.x) remain
+  empty so auditors can still paste screenshots manually below the summary.
 """
 
 from __future__ import annotations
@@ -36,8 +37,9 @@ SEMANAL_SKELETON_PATH = _SKELETON_DIR / "semanal_sabesp.docx"
 _CHART_WIDTH = Mm(150)
 
 # (chart key, figure-builder name) for the §8.1 KPI block. The keys match the
-# {{ name }} placeholders inserted by scripts/build_docx_skeletons.py.
-_MENSAL_CHART_BUILDERS: tuple[tuple[str, str], ...] = (
+# {{ name }} placeholders inserted by scripts/build_docx_skeletons.py. Same
+# three charts feed the Semanal summary block (under §1.1.1 and §2).
+_DASHBOARD_CHART_BUILDERS: tuple[tuple[str, str], ...] = (
     ("ic_bar", "build_ic_bar"),
     ("iqs_bar", "build_service_iqs_bar"),
     ("photo_conformity", "build_photo_conformity_stacked"),
@@ -127,17 +129,18 @@ def render_mensal(context: MensalContext, *, skeleton: Path = MENSAL_SKELETON_PA
     return buf.getvalue()
 
 
-def render_mensal_chart_pngs(
+def render_dashboard_chart_pngs(
     template: PimentasTemplate,
     iqs_rows: list,
     ic_rows: list,
 ) -> dict[str, bytes]:
-    """Render the §8.1 dashboard charts as PNG bytes via kaleido.
+    """Render the IC/IQS/photo-conformity dashboard charts as PNG bytes via kaleido.
 
-    Returns a dict matching the placeholders inserted by
-    ``scripts/build_docx_skeletons.py:insert_chart_placeholders``. Width/height
-    target the source template's chart aspect ratio (≈ 9:4); kaleido scale=1.5
-    keeps the rendered images crisp on a printed A4.
+    Returns a dict matching the placeholders inserted by the chart-placeholder
+    helpers in ``scripts/build_docx_skeletons.py``. Width/height target the
+    source template's chart aspect ratio (≈ 9:4); kaleido scale=1.5 keeps the
+    rendered images crisp on a printed A4. Both Mensal (§8.1) and Semanal
+    (§1.1.1 + §2) bind the same three placeholders.
     """
     chart_pngs: dict[str, bytes] = {}
     builder_args = {
@@ -145,7 +148,7 @@ def render_mensal_chart_pngs(
         "build_service_iqs_bar": (iqs_rows,),
         "build_photo_conformity_stacked": (iqs_rows,),
     }
-    for key, builder_name in _MENSAL_CHART_BUILDERS:
+    for key, builder_name in _DASHBOARD_CHART_BUILDERS:
         fig = getattr(template, builder_name)(*builder_args[builder_name])
         chart_pngs[key] = fig.to_image(format="png", width=900, height=400, scale=1.5)
     return chart_pngs
@@ -153,15 +156,15 @@ def render_mensal_chart_pngs(
 
 @dataclass(frozen=True)
 class SemanalContext:
-    """Inputs the Sabesp Semanal skeleton expects bound. The semanal source only
-    has cover-page fields that vary per report, so the binding surface is small —
-    polo name + period — but ``polo_label_upper`` is derived rather than passed
-    so callers don't have to think about Brazilian-Portuguese case rules.
+    """Inputs the Sabesp Semanal skeleton expects bound. Cover-page bindings
+    (polo + period) plus the same summary chart PNGs as Mensal — bound late
+    in ``render_semanal`` because InlineImage needs a live DocxTemplate.
     """
 
     polo_label: str
     periodo_inicio: str  # dd/mm/yyyy
     periodo_fim: str  # dd/mm/yyyy
+    chart_pngs: dict[str, bytes] = field(default_factory=dict)
 
     @property
     def polo_label_upper(self) -> str:
@@ -178,7 +181,11 @@ class SemanalContext:
 
 def render_semanal(context: SemanalContext, *, skeleton: Path = SEMANAL_SKELETON_PATH) -> bytes:
     tpl = DocxTemplate(str(skeleton))
-    tpl.render(context.as_render_dict())
+    render_dict: dict[str, object] = dict(context.as_render_dict())
+    for name, png in context.chart_pngs.items():
+        if png:
+            render_dict[name] = InlineImage(tpl, BytesIO(png), width=_CHART_WIDTH)
+    tpl.render(render_dict)
     buf = BytesIO()
     tpl.save(buf)
     return buf.getvalue()
@@ -248,7 +255,7 @@ def context_from_template(template: PimentasTemplate, path: Path) -> MensalConte
         mes_extenso=mes_extenso,
         ano=ano,
         indice_tecnologico=indice_rows_from_inspections(inspections),
-        chart_pngs=render_mensal_chart_pngs(template, iqs_rows, ic_rows),
+        chart_pngs=render_dashboard_chart_pngs(template, iqs_rows, ic_rows),
     )
 
 
@@ -256,8 +263,12 @@ def semanal_context_from_template(template: PimentasTemplate, path: Path) -> Sem
     """Build a SemanalContext from a PimentasTemplate + the uploaded xlsx path."""
     inspections = template.extract_inspections(path)
     periodo_inicio, periodo_fim, _mes_extenso, _ano = _period_fields(inspections)
+    services = sorted(template.SERVICE_SHEETS)
+    iqs_rows = iqs_rows_from_inspections(inspections, services)
+    ic_rows = ic_rows_from_inspections(inspections, services)
     return SemanalContext(
         polo_label=template.polo_name.title(),
         periodo_inicio=periodo_inicio,
         periodo_fim=periodo_fim,
+        chart_pngs=render_dashboard_chart_pngs(template, iqs_rows, ic_rows),
     )

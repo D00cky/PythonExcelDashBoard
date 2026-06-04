@@ -186,6 +186,38 @@ def insert_chart_placeholders(doc: DocxDocument) -> int:
     return len(CHART_PLACEHOLDERS_AFTER_8_1)
 
 
+# (anchor-paragraph prefix, placeholders to insert *before* the anchor).
+# Inserting before the next heading lands the chart inside its own section —
+# ic_bar under §1.1.1, iqs_bar + photo_conformity under §2 — without
+# disturbing the per-service §2.x bodies the auditor still fills manually.
+SEMANAL_CHART_INSERTS: list[tuple[str, list[str]]] = [
+    ("1.1.2. QUANTIDADE", ["{{ ic_bar }}"]),
+    ("2.1. ÁGUA", ["{{ iqs_bar }}", "{{ photo_conformity }}"]),
+]
+
+
+def insert_semanal_chart_placeholders(doc: DocxDocument) -> int:
+    """Insert the three Semanal summary-chart placeholders.
+
+    Anchors are *next-heading* prefixes (``1.1.2.`` for the IC chart's section,
+    ``2.1. ÁGUA`` for the IQS section) so inserts land at the bottom of the
+    intended subsection. Re-snapshots ``doc.paragraphs`` per anchor because
+    each insert shifts subsequent paragraph indices.
+    """
+    inserted = 0
+    for anchor_prefix, placeholders in SEMANAL_CHART_INSERTS:
+        anchor = next(
+            (p for p in doc.paragraphs if p.text.startswith(anchor_prefix)),
+            None,
+        )
+        if anchor is None:
+            continue
+        for placeholder in placeholders:
+            anchor.insert_paragraph_before(placeholder)
+            inserted += 1
+    return inserted
+
+
 def strip_body_range(doc: DocxDocument, start_text: str, end_text: str) -> int:
     """Remove every top-level body element from the first one whose visible text
     starts with ``start_text`` (inclusive) up to but not including the first one
@@ -315,9 +347,10 @@ def build_mensal_skeleton(source: Path, target: Path) -> dict[str, int]:
 
 
 def build_semanal_skeleton(source: Path, target: Path) -> dict[str, int]:
-    """Build the weekly skeleton. The structural body is empty in the source
-    template, so this is a thin pass: cross-run substitution of the cover-table
-    anchors (period dates + polo name), no loop wrapping needed.
+    """Build the weekly skeleton: cover-table cross-run substitutions plus
+    the three summary chart placeholders (ic_bar/iqs_bar/photo_conformity)
+    inserted at the top of §1.1.1 and §2. Per-service §2.x bodies stay
+    untouched so the auditor can still paste screenshots manually.
     """
     if not source.exists():
         raise FileNotFoundError(f"source docx not found: {source}")
@@ -328,6 +361,7 @@ def build_semanal_skeleton(source: Path, target: Path) -> dict[str, int]:
         for paragraph in iter_paragraphs(doc):
             n += replace_in_paragraph(paragraph, anchor, placeholder)
         counts[anchor] = n
+    counts["<chart placeholders §1.1.1 + §2>"] = insert_semanal_chart_placeholders(doc)
     target.parent.mkdir(parents=True, exist_ok=True)
     doc.save(str(target))
     return counts
