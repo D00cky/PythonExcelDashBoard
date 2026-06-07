@@ -57,6 +57,11 @@ def raw_key_for(file_path: Path) -> str:
     return Path(file_path).stem
 
 
+def fail_key_for(file_path: Path) -> str:
+    """Cache key for a source file's stage failures."""
+    return raw_key_for(file_path) + _FAIL_SUFFIX
+
+
 def ingest_batch(
     uuid: str, batch_dir: Path, progress_callback: ProgressCallback | None = None
 ) -> IngestResult:
@@ -114,7 +119,7 @@ def _ingest(
         failures = template.extract_stage_failures(path).assign(polo=polo)
 
         insp_path = cache.save_raw(uuid, key, inspections)
-        fail_path = cache.save_raw(uuid, key + _FAIL_SUFFIX, failures)
+        fail_path = cache.save_raw(uuid, fail_key_for(path), failures)
         files_meta[key] = {
             "polo": polo,
             "zone": zone,
