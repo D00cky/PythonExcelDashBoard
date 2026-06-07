@@ -7,8 +7,10 @@ def create_app(config: dict | None = None) -> Flask:
     app = Flask(__name__, instance_path=instance_path)
     app.config.update(config)
 
+    from app.core.chart_theme import register_templates
     from app.routes.main import bp as main_bp
 
+    register_templates()
     app.register_blueprint(main_bp)
 
     return app
