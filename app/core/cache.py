@@ -87,23 +87,28 @@ def write_meta(uuid: str, meta: dict) -> None:
     )
 
 
-def _raw_path(uuid: str, polo: str) -> Path:
-    return cache_dir(uuid) / _RAW_DIR / f"{_slug(polo)}.parquet"
+def _raw_path(uuid: str, key: str) -> Path:
+    return cache_dir(uuid) / _RAW_DIR / f"{_slug(key)}.parquet"
 
 
-def save_raw(uuid: str, polo: str, df: pd.DataFrame) -> Path:
-    """Persist one Polo file's normalized inspections as parquet."""
-    path = _raw_path(uuid, polo)
+def save_raw(uuid: str, key: str, df: pd.DataFrame) -> Path:
+    """Persist a normalized frame under ``raw/<key>.parquet``.
+
+    ``key`` identifies one cached frame — ingest uses the source file's stem
+    (and ``<stem>__fail`` for its stage failures) so same-Polo files from
+    different weeks never collide.
+    """
+    path = _raw_path(uuid, key)
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path, index=False)
     return path
 
 
-def load_raw(uuid: str, polo: str) -> pd.DataFrame:
-    """Load one Polo's cached inspections. Raises ``KeyError`` if not cached."""
-    path = _raw_path(uuid, polo)
+def load_raw(uuid: str, key: str) -> pd.DataFrame:
+    """Load a cached raw frame by key. Raises ``KeyError`` if not cached."""
+    path = _raw_path(uuid, key)
     if not path.is_file():
-        raise KeyError(polo)
+        raise KeyError(key)
     return pd.read_parquet(path)
 
 

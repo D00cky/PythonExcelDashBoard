@@ -67,12 +67,43 @@ def test_ingest_batch_populates_cache(app):
     assert meta["polo_to_zone"]["SANTANA"] == "Zona Norte"
 
 
-def test_raw_parquet_per_polo_loadable(app):
+def test_raw_parquet_per_file_loadable(app):
     batch_dir = _make_batch(_uploads(app) / "u1")
     ingest.ingest_batch("u1", batch_dir)
-    raw = cache.load_raw("u1", "PIMENTAS")
+    raw = cache.load_raw("u1", "file_00")  # keyed by source file stem
     assert (raw["polo"] == "PIMENTAS").all()
     assert "zone" in raw.columns
+    failures = cache.load_raw("u1", "file_00__fail")
+    assert "polo" in failures.columns
+
+
+def test_same_polo_across_weeks_does_not_collide(app):
+    base = _uploads(app) / "u9"
+    base.mkdir(parents=True)
+    w1 = make_minimal_pimentas(
+        base,
+        polo="PIMENTAS",
+        periodo="Período: 04/05/2026 à 10/05/2026",
+        with_inspections=True,
+        file_name="file_00.xlsx",
+    )
+    w2 = make_minimal_pimentas(
+        base,
+        polo="PIMENTAS",
+        periodo="Período: 11/05/2026 à 17/05/2026",
+        with_inspections=True,
+        file_name="file_01.xlsx",
+    )
+    write_manifest(base, [discover_polo_file(w1), discover_polo_file(w2)])
+    ingest.ingest_batch("u9", base)
+
+    # Both weeks survive as distinct raw files...
+    assert len(cache.load_raw("u9", "file_00")) > 0
+    assert len(cache.load_raw("u9", "file_01")) > 0
+    # ...and the per-Polo overview combines both weeks.
+    muni = aggregations.load_scope("u9", aggregations.scope_key_muni("PIMENTAS"))
+    per_week = len(cache.load_raw("u9", "file_00")) + len(cache.load_raw("u9", "file_01"))
+    assert int(muni.summary.iloc[0]["total_inspections"]) == per_week
 
 
 def test_city_inspections_equal_sum_of_municipalities(app):
