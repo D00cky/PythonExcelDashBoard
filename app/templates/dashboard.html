@@ -266,15 +266,15 @@
 
     {% if download_action %}
     <div class="action-row">
-        <form class="export-bar" action="{{ download_action }}" method="get">
+        {% if scope_level is defined %}
+        <form class="export-bar" action="/export/{{ download_action.split('/')[2] }}" method="post">
             {% if active_polo and active_polo != "__all" %}
-            <input type="hidden" name="polo" value="{{ active_polo }}">
+            <input type="hidden" name="scope_name" value="{{ active_polo }}">
+            {% elif active_zone %}
+            <input type="hidden" name="scope_name" value="{{ active_zone }}">
             {% endif %}
             {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
             {% if selected_period %}<input type="hidden" name="period" value="{{ selected_period }}">{% endif %}
-            {% if active_polo == "__all" and selected_polos %}
-            {% for p in selected_polos %}<input type="hidden" name="polos" value="{{ p }}">{% endfor %}
-            {% endif %}
             <div class="export-scope">
                 <span>Escopo do relatório:</span>
                 <label class="{% if scope_level != 'city' %}disabled{% endif %}">
@@ -304,6 +304,19 @@
                 {% endif %}
             </div>
         </form>
+        {% else %}
+        <form class="download" action="{{ download_action }}" method="get">
+            <label for="fmt">Baixar como:</label>
+            <select id="fmt" name="fmt">
+                <option value="docx">.docx (Word)</option>
+                <option value="pdf">.pdf (PDF)</option>
+                <option value="pptx">.pptx (Apresentação)</option>
+                <option value="xlsx">.xlsx (Excel)</option>
+                <option value="md">.md (Markdown)</option>
+            </select>
+            <button type="submit">Baixar</button>
+        </form>
+        {% endif %}
 
         {% if teams_sorted %}
         <form class="download" action="/dashboard/{{ download_action.split('/')[2] }}/team" method="get">

@@ -503,8 +503,77 @@ def test_dashboard_uses_scoped_export_bar(client, tmp_path):
     assert "Escopo do relatório:" in body
     assert "Exportar como:" in body
     assert "Zona atual" in body
+    assert 'action="/export/' in body
+    assert 'method="post"' in body
     assert 'name="fmt" value="html"' in body
-    assert 'name="polos" value="SANTANA"' in body
+    assert 'name="scope_name" value="Zona Norte"' in body
+
+
+def test_export_endpoint_returns_html_report(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    created = client.post(
+        f"/export/{batch_id}",
+        data={"fmt": "html", "scope": "city", "period": "2026-W10"},
+    )
+    assert created.status_code == 303
+
+    response = client.get(created.location)
+    assert response.status_code == 200
+    assert "html" in response.mimetype
+    body = response.data.decode("utf-8")
+    assert "Relatório de Auditoria" in body
+    assert "Inspeções" in body
+
+
+def test_export_endpoint_returns_docx_report(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    created = client.post(
+        f"/export/{batch_id}",
+        data={"fmt": "docx", "scope": "zone", "scope_name": "Zona Norte", "period": "2026-W10"},
+    )
+    assert created.status_code == 303
+
+    response = client.get(created.location)
+    assert response.status_code == 200
+    assert "wordprocessingml" in response.mimetype
+    assert response.data[:2] == b"PK"
+
+
+def test_export_endpoint_returns_pptx_report(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    created = client.post(
+        f"/export/{batch_id}",
+        data={
+            "fmt": "pptx",
+            "scope": "municipality",
+            "scope_name": "SANTANA",
+            "period": "2026-W10",
+        },
+    )
+    assert created.status_code == 303
+
+    response = client.get(created.location)
+    assert response.status_code == 200
+    assert "presentationml" in response.mimetype
+    assert response.data[:2] == b"PK"
+
+
+def test_export_endpoint_returns_pdf_report(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    created = client.post(
+        f"/export/{batch_id}",
+        data={"fmt": "pdf", "scope": "city", "period": "2026-W10"},
+    )
+    assert created.status_code == 303
+
+    response = client.get(created.location)
+    assert response.status_code == 200
+    assert response.mimetype == "application/pdf"
+    assert response.data[:4] == b"%PDF"
 
 
 def test_batch_dashboard_renders_polo_tabs(client, tmp_path):
