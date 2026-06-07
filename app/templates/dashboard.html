@@ -2,69 +2,119 @@
 <html lang="pt-BR">
 <head>
     <meta charset="utf-8">
-    <title>Dashboard — Polo {{ polo_name }}</title>
+    <title>Dashboard Auditoria — {{ breadcrumbs[0].label if breadcrumbs else ("Polo " ~ polo_name) }}</title>
     <script src="https://cdn.plot.ly/plotly-basic-3.5.0.min.js" charset="utf-8"></script>
     <style>
-        body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem; color: #1a1a1a; }
-        header { border-bottom: 1px solid #ddd; padding-bottom: 1rem; margin-bottom: 1.5rem; }
+        body { font-family: system-ui, sans-serif; max-width: 1320px; margin: 0 auto; padding: 1rem 1.5rem; color: #e5e7eb; background:#08080d; }
+        header { border-bottom: 1px solid rgba(255,255,255,.08); padding-bottom: 1rem; margin-bottom: 1.5rem; }
         .topbar { margin-bottom: 0.75rem; }
-        .home-link { color: #2a9d8f; text-decoration: none; font-size: 0.92rem; font-weight: 500; }
+        .home-link { color: #f97316; text-decoration: none; font-size: 0.92rem; font-weight: 500; }
         .home-link:hover { text-decoration: underline; }
-        h1 { margin: 0; color: #264653; }
-        .periodo { color: #555; margin-top: 0.25rem; }
+        h1 { margin: 0; color: #f8fafc; }
+        .periodo { color: #a1a1aa; margin-top: 0.25rem; }
+        .breadcrumb { display:flex; gap:.45rem; flex-wrap:wrap; align-items:center; margin:.85rem 0 0; color:#71717a; font-size:.92rem; }
+        .breadcrumb a { color:#fb923c; text-decoration:none; }
+        .breadcrumb a:hover { text-decoration:underline; }
+        .scope-badge { display:inline-flex; align-items:center; margin-top:.75rem; padding:.24rem .65rem; border-radius:999px; background:rgba(249,115,22,.13); color:#fdba74; border:1px solid rgba(249,115,22,.28); font-size:.78rem; text-transform:uppercase; letter-spacing:.04em; }
+        .dashboard-layout { display:grid; grid-template-columns: minmax(0, 1fr); gap:1.25rem; align-items:start; }
+        @media (min-width: 1100px) { .dashboard-layout.has-sidebar { grid-template-columns: 280px minmax(0, 1fr); } }
+        .scope-sidebar { position:sticky; top:1rem; max-height:calc(100vh - 2rem); overflow:auto; background:#12121a; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:1rem; }
+        .scope-sidebar h2 { margin:0 0 .8rem; color:#f8fafc; font-size:1rem; }
+        .scope-search { width:100%; padding:.55rem .7rem; border-radius:6px; border:1px solid #3f3f46; background:#18181b; color:#f4f4f5; font-size:.9rem; margin-bottom:.9rem; }
+        .scope-city { display:block; padding:.5rem .65rem; border-radius:6px; color:#e5e7eb; text-decoration:none; margin-bottom:.5rem; }
+        .scope-city.active, .zone-link.active, .municipality-link.active { background:#f97316; color:#111827; font-weight:700; }
+        .zone-group { border-top:1px solid rgba(255,255,255,.07); padding-top:.55rem; margin-top:.55rem; }
+        .zone-link { display:flex; justify-content:space-between; gap:.5rem; padding:.45rem .65rem; border-radius:6px; color:#f4f4f5; text-decoration:none; font-size:.9rem; }
+        .zone-count { color:#a1a1aa; font-size:.78rem; }
+        .municipality-list { margin:.35rem 0 0; padding:0 0 0 .45rem; list-style:none; max-height:190px; overflow:auto; }
+        .municipality-link { display:block; padding:.34rem .55rem; border-radius:6px; color:#d4d4d8; text-decoration:none; font-size:.85rem; }
+        .municipality-link:hover, .zone-link:hover, .scope-city:hover { background:#23232f; }
+        .sidebar-stats { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; margin-top:1rem; color:#a1a1aa; font-size:.78rem; }
+        .sidebar-stats strong { display:block; color:#f8fafc; font-size:1.05rem; }
         .kpi-row { display: flex; gap: 1.5rem; margin: 1.5rem 0; flex-wrap: wrap; }
-        .kpi-card { background: #f1f5f4; padding: 1rem 1.5rem; border-radius: 8px; flex: 1 1 200px; text-align: center; border: 1px solid #e0e6e4; }
-        .kpi-value { font-size: 2.5rem; font-weight: 700; color: #2a9d8f; line-height: 1; }
-        .kpi-value.amber { color: #e9c46a; }
-        .kpi-value.red { color: #e76f51; }
-        .kpi-label { color: #555; margin-top: 0.5rem; font-size: 0.9rem; }
+        .kpi-card { background: #12121a; padding: 1rem 1.5rem; border-radius: 8px; flex: 1 1 200px; text-align: center; border: 1px solid rgba(255,255,255,.08); }
+        .kpi-value { font-size: 2.5rem; font-weight: 700; color: #f97316; line-height: 1; }
+        .kpi-value.amber { color: #eab308; }
+        .kpi-value.red { color: #ef4444; }
+        .kpi-label { color: #a1a1aa; margin-top: 0.5rem; font-size: 0.9rem; }
         .chart { margin: 2rem 0; }
+        .scope-chart-section { margin:1.5rem 0 2rem; }
+        .scope-chart-section h2 { color:#f8fafc; font-size:1.25rem; margin:0 0 1rem; }
+        .scope-chart-grid { display:grid; grid-template-columns:1fr; gap:1rem; }
+        @media (min-width: 1000px) { .scope-chart-grid { grid-template-columns:1fr 1fr; } }
+        .scope-chart-card { background:#12121a; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:.8rem; min-width:0; }
+        .scope-chart-card h3 { margin:.1rem 0 .6rem; color:#d4d4d8; font-size:.95rem; }
+        .ranking-section { margin:1.5rem 0; background:#12121a; border:1px solid rgba(255,255,255,.08); border-radius:8px; padding:1rem; }
+        .ranking-section h2 { margin:0 0 .8rem; color:#f8fafc; font-size:1.15rem; }
+        .ranking-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+        .ranking-table th, .ranking-table td { padding:.55rem .65rem; border-bottom:1px solid rgba(255,255,255,.07); text-align:left; }
+        .ranking-table th { color:#d4d4d8; cursor:pointer; user-select:none; background:#18181b; }
+        .ranking-table td { color:#e5e7eb; }
+        .ranking-table td:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
         footer { color: #888; font-size: 0.85rem; margin-top: 2rem; text-align: center; }
+        .export-bar { margin:1.5rem 0; display:flex; flex-direction:column; gap:.8rem; padding:1rem; background:#12121a; border:1px solid rgba(255,255,255,.08); border-radius:8px; }
+        .export-scope, .export-actions { display:flex; gap:.7rem; align-items:center; flex-wrap:wrap; }
+        .export-scope span, .export-actions span { color:#a1a1aa; font-size:.86rem; font-weight:600; }
+        .export-scope label { color:#d4d4d8; font-size:.86rem; display:inline-flex; gap:.35rem; align-items:center; }
+        .export-scope label.disabled { color:#71717a; }
+        .export-btn { padding:.55rem .85rem; background:#18181b; color:#f4f4f5; border:1px solid #3f3f46; border-radius:6px; cursor:pointer; font-size:.88rem; font-weight:700; }
+        .export-btn.primary { background:#f97316; color:#111827; border-color:#f97316; }
+        .export-btn:hover { background:#23232f; }
+        .export-btn.primary:hover { background:#fb923c; }
         .download { margin: 1.5rem 0; display: flex; gap: 0.75rem; align-items: center; }
-        .download select { padding: 0.5rem; font-size: 0.95rem; border-radius: 6px; border: 1px solid #ccc; }
-        .download button { padding: 0.6rem 1.25rem; background: #264653; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; }
-        .download button:hover { background: #1c343f; }
+        .download select { padding: 0.5rem; font-size: 0.95rem; border-radius: 6px; border: 1px solid #3f3f46; background:#18181b; color:#f4f4f5; }
+        .download button { padding: 0.6rem 1.25rem; background: #f97316; color: #111827; border: none; border-radius: 6px; cursor: pointer; font-size: 0.95rem; font-weight:700; }
+        .download button:hover { background: #fb923c; }
         .action-row { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: flex-start; margin: 1.5rem 0; }
         .action-row .download { margin: 0; }
-        .service-section { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid #e0e6e4; }
-        .service-section h2 { margin: 0 0 1rem; color: #264653; font-size: 1.4rem; }
+        .service-section { margin-top: 2.5rem; padding-top: 1rem; border-top: 2px solid rgba(255,255,255,.08); }
+        .service-section h2 { margin: 0 0 1rem; color: #f8fafc; font-size: 1.4rem; }
         .chart-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
         @media (min-width: 1000px) { .chart-grid { grid-template-columns: 1fr 1fr; } }
-        .filter-bar { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; padding: 0.9rem 1.1rem; background: #f7f9f8; border: 1px solid #e0e6e4; border-radius: 8px; margin: 1rem 0; }
-        .filter-bar label { font-size: 0.78rem; color: #555; text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.25rem; }
-        .filter-bar input[type="date"] { padding: 0.45rem 0.6rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.95rem; }
-        .filter-bar button { padding: 0.55rem 1.1rem; background: #2a9d8f; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.92rem; }
-        .filter-bar button:hover { background: #1f7e72; }
+        .filter-bar { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; padding: 0.9rem 1.1rem; background: #12121a; border: 1px solid rgba(255,255,255,.08); border-radius: 8px; margin: 1rem 0; }
+        .filter-bar label { font-size: 0.78rem; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 0.25rem; }
+        .filter-bar input[type="date"] { padding: 0.45rem 0.6rem; border: 1px solid #3f3f46; border-radius: 6px; font-size: 0.95rem; background:#18181b; color:#f4f4f5; }
+        .filter-bar button { padding: 0.55rem 1.1rem; background: #f97316; color: #111827; border: none; border-radius: 6px; cursor: pointer; font-size: 0.92rem; font-weight:700; }
+        .filter-bar button:hover { background: #fb923c; }
         .filter-bar a.reset { color: #b14732; text-decoration: none; font-size: 0.88rem; padding: 0.55rem 0.4rem; }
         .filter-bar a.reset:hover { text-decoration: underline; }
-        .filter-bar .hint { font-size: 0.82rem; color: #666; margin-left: auto; align-self: center; }
-        .filter-bar .hint strong { color: #2a9d8f; }
+        .filter-bar .hint { font-size: 0.82rem; color: #a1a1aa; margin-left: auto; align-self: center; }
+        .filter-bar .hint strong { color: #fb923c; }
         .warning-banner { background: #fff3d6; border-left: 5px solid #e9c46a; color: #6c4f00; padding: 0.9rem 1.1rem; border-radius: 6px; margin: 1rem 0; font-size: 0.93rem; line-height: 1.45; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
         .warning-banner .swap-action { background: #6c4f00; color: white; padding: 0.4rem 0.85rem; border-radius: 6px; text-decoration: none; font-size: 0.86rem; font-weight: 600; white-space: nowrap; margin-left: auto; }
         .warning-banner .swap-action:hover { background: #4d3700; }
         .badge-swap { background: #2a9d8f; color: white; padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.76rem; margin-left: 0.4rem; }
         .recomputed-note { font-size: 0.82rem; color: #666; padding: 0.4rem 0.75rem; background: #f1f5f4; border-radius: 4px; margin: 0.5rem 0 1rem; display: inline-block; }
         .nc-focus { margin-top: 3rem; padding-top: 1.5rem; border-top: 3px solid #e76f51; }
-        .nc-focus h2 { color: #b14732; margin: 0 0 1.5rem; font-size: 1.6rem; }
+        .nc-focus h2 { color: #fca5a5; margin: 0 0 1.5rem; font-size: 1.6rem; }
         .reasons-grid { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-top: 1.5rem; }
         @media (min-width: 1000px) { .reasons-grid { grid-template-columns: 1fr 1fr; } }
-        .reasons-col h3 { font-size: 1rem; color: #264653; margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 0.4rem; }
+        .reasons-col h3 { font-size: 1rem; color: #f8fafc; margin: 0 0 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 0.4rem; }
         .badge-nc, .badge-sf { font-size: 0.72rem; padding: 0.12rem 0.5rem; border-radius: 4px; color: white; letter-spacing: 0.04em; }
         .badge-nc { background: #e76f51; }
         .badge-sf { background: #e9c46a; color: #6c4f00; }
-        .reasons-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; background: white; }
+        .reasons-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; background: #12121a; }
         .reasons-table th, .reasons-table td { padding: 0.5rem 0.65rem; border-bottom: 1px solid #eef1f0; text-align: left; vertical-align: top; }
-        .reasons-table th { color: #555; font-weight: 600; background: #f7f9f8; }
+        .reasons-table th { color: #d4d4d8; font-weight: 600; background: #18181b; }
         .reasons-table td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: #b14732; font-weight: 600; }
         .reasons-table td:nth-child(2) { color: #777; font-size: 0.85rem; }
-        .reasons-empty { color: #888; font-style: italic; font-size: 0.9rem; padding: 1rem; background: #f7f9f8; border-radius: 6px; }
+        .reasons-empty { color: #a1a1aa; font-style: italic; font-size: 0.9rem; padding: 1rem; background: #12121a; border-radius: 6px; }
     </style>
 </head>
 <body>
     <header>
         <div class="topbar"><a href="/" class="home-link">← Página inicial / Novo dashboard</a></div>
-        <h1>Dashboard — Polo {{ polo_name }}</h1>
+        <h1>{% if breadcrumbs %}Dashboard Auditoria — São Paulo{% else %}Dashboard — Polo {{ polo_name }}{% endif %}</h1>
         {% if periodo %}<div class="periodo">Período: <strong>{{ periodo }}</strong>{% if is_filtered %} <em>(filtrado)</em>{% endif %}</div>{% endif %}
+        {% if breadcrumbs %}
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+            {% for item in breadcrumbs %}
+            {% if not loop.first %}<span>&gt;</span>{% endif %}
+            {% if loop.last %}<strong>{{ item.label }}</strong>{% else %}<a href="{{ item.href }}">{{ item.label }}</a>{% endif %}
+            {% endfor %}
+        </nav>
+        <div class="scope-badge">Escopo: {{ {'city':'Cidade', 'zone':'Zona', 'municipality':'Município'}[scope_level] }}</div>
+        {% endif %}
     </header>
 
     {% macro tab_row(items, level_label, accent='#2a9d8f') -%}
@@ -90,6 +140,37 @@
         <a href="/report/{{ download_action.split('/')[2] }}?{{ polo_query or 'polo=__all' }}" style="margin-left:auto;padding:.5rem 1rem;background:#1f7e72;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">📄 Gerar Relatório</a>
     </nav>
     {% endif %}
+
+    <div class="dashboard-layout {% if scope_sidebar %}has-sidebar{% endif %}">
+    {% if scope_sidebar %}
+    <aside class="scope-sidebar" aria-label="Navegação de escopo">
+        <h2>Escopos</h2>
+        <input class="scope-search" id="scope-search" type="search" placeholder="Buscar município ou zona" aria-label="Buscar município ou zona">
+        <a class="scope-city {% if scope_sidebar.city_active %}active{% endif %}" href="{{ scope_sidebar.city_href }}">São Paulo</a>
+        {% for zone in scope_sidebar.zones %}
+        <section class="zone-group" data-zone-group>
+            <a class="zone-link {% if zone.active %}active{% endif %}" href="{{ zone.href }}">
+                <span>{{ zone.label }}</span>
+                <span class="zone-count">{{ zone.count }}</span>
+            </a>
+            <ul class="municipality-list" {% if not zone.expanded %}hidden{% endif %}>
+                {% for municipality in zone.municipalities %}
+                <li data-scope-item="{{ municipality.search_text }}">
+                    <a class="municipality-link {% if municipality.active %}active{% endif %}" href="{{ municipality.href }}">{{ municipality.label }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endfor %}
+        <div class="sidebar-stats">
+            <div><strong>{{ scope_sidebar.stats.municipalities }}</strong>municípios</div>
+            <div><strong>{{ scope_sidebar.stats.zones }}</strong>zonas</div>
+            <div><strong>{{ scope_sidebar.stats.files }}</strong>arquivos</div>
+        </div>
+    </aside>
+    {% endif %}
+
+    <main>
 
     {% if available_polos %}
     <form class="filter-bar selection-bar" method="get" action="">
@@ -185,27 +266,43 @@
 
     {% if download_action %}
     <div class="action-row">
-        <form class="download" action="{{ download_action }}" method="get">
+        <form class="export-bar" action="{{ download_action }}" method="get">
             {% if active_polo and active_polo != "__all" %}
             <input type="hidden" name="polo" value="{{ active_polo }}">
             {% endif %}
-            <label for="fmt">Baixar como:</label>
-            <select id="fmt" name="fmt">
+            {% if view %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
+            {% if selected_period %}<input type="hidden" name="period" value="{{ selected_period }}">{% endif %}
+            {% if active_polo == "__all" and selected_polos %}
+            {% for p in selected_polos %}<input type="hidden" name="polos" value="{{ p }}">{% endfor %}
+            {% endif %}
+            <div class="export-scope">
+                <span>Escopo do relatório:</span>
+                <label class="{% if scope_level != 'city' %}disabled{% endif %}">
+                    <input type="radio" name="scope" value="city" {% if scope_level == 'city' %}checked{% else %}disabled{% endif %}> Cidade inteira
+                </label>
+                <label class="{% if scope_level == 'city' %}disabled{% endif %}">
+                    <input type="radio" name="scope" value="zone" {% if scope_level == 'zone' %}checked{% elif scope_level == 'city' %}disabled{% endif %}> Zona atual
+                </label>
+                <label class="{% if scope_level != 'municipality' %}disabled{% endif %}">
+                    <input type="radio" name="scope" value="municipality" {% if scope_level == 'municipality' %}checked{% else %}disabled{% endif %}> Município atual
+                </label>
+            </div>
+            <div class="export-actions">
+                <span>Exportar como:</span>
                 {% if active_polo and active_polo != "__all" %}
-                <option value="docx">.docx (Word)</option>
-                <option value="pdf">.pdf (PDF)</option>
-                <option value="pptx">.pptx (Apresentação)</option>
-                <option value="xlsx">.xlsx (Excel)</option>
-                <option value="md">.md (Markdown)</option>
+                <button class="export-btn primary" type="submit" name="fmt" value="docx">Word (.docx)</button>
+                <button class="export-btn" type="submit" name="fmt" value="pdf">PDF</button>
+                <button class="export-btn" type="submit" name="fmt" value="pptx">PowerPoint</button>
+                <button class="export-btn" type="submit" name="fmt" value="xlsx">Excel</button>
+                <button class="export-btn" type="submit" name="fmt" value="md">Markdown</button>
                 {% else %}
-                <option value="docx">.docx (Word)</option>
-                <option value="pdf">.pdf (PDF)</option>
-                <option value="html">.html (Página)</option>
-                <option value="xlsx">.xlsx (Excel)</option>
-                <option value="md">.md (Markdown)</option>
+                <button class="export-btn primary" type="submit" name="fmt" value="html">HTML interativo</button>
+                <button class="export-btn" type="submit" name="fmt" value="docx">Word (.docx)</button>
+                <button class="export-btn" type="submit" name="fmt" value="pdf">PDF</button>
+                <button class="export-btn" type="submit" name="fmt" value="xlsx">Excel</button>
+                <button class="export-btn" type="submit" name="fmt" value="md">Markdown</button>
                 {% endif %}
-            </select>
-            <button type="submit">⬇ Baixar</button>
+            </div>
         </form>
 
         {% if teams_sorted %}
@@ -221,6 +318,48 @@
         </form>
         {% endif %}
     </div>
+    {% endif %}
+
+    {% if scope_rankings %}
+    <section class="ranking-section">
+        <h2>Ranking do escopo</h2>
+        <table class="ranking-table" data-sortable-table>
+            <thead>
+                <tr>
+                    <th data-type="text">Escopo</th>
+                    <th data-type="number">IQS</th>
+                    <th data-type="number">IC</th>
+                    <th data-type="number">Inspeções</th>
+                    <th data-type="number">Fotos</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in scope_rankings %}
+                <tr>
+                    <td>{{ row.label }}</td>
+                    <td data-value="{{ row.iqs_pct }}">{{ "%.1f"|format(row.iqs_pct * 100) }}%</td>
+                    <td data-value="{{ row.ic_pct }}">{{ "%.1f"|format(row.ic_pct * 100) }}%</td>
+                    <td data-value="{{ row.inspections }}">{{ row.inspections }}</td>
+                    <td data-value="{{ row.photos }}">{{ row.photos }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% endif %}
+
+    {% if scope_charts %}
+    <section class="scope-chart-section">
+        <h2>Comparativos do escopo</h2>
+        <div class="scope-chart-grid">
+            {% for item in scope_charts %}
+            <article class="scope-chart-card">
+                <h3>{{ item.title }}</h3>
+                {{ item.chart | safe }}
+            </article>
+            {% endfor %}
+        </div>
+    </section>
     {% endif %}
 
     <div class="chart">{{ fig_ic_bar | safe }}</div>
@@ -281,9 +420,57 @@
     </section>
     {% endfor %}
 
+    </main>
+    </div>
+
     <footer>Gerado a partir de Relatório Semanal — Polo {{ polo_name }}</footer>
 
     <script>
+        (function () {
+            var search = document.getElementById('scope-search');
+            if (!search) return;
+            search.addEventListener('input', function () {
+                var query = search.value.trim().toLowerCase();
+                document.querySelectorAll('[data-zone-group]').forEach(function (group) {
+                    var matches = 0;
+                    group.querySelectorAll('[data-scope-item]').forEach(function (item) {
+                        var hit = !query || item.getAttribute('data-scope-item').indexOf(query) !== -1;
+                        item.hidden = !hit;
+                        if (hit) matches += 1;
+                    });
+                    var list = group.querySelector('.municipality-list');
+                    if (list) list.hidden = !query && !group.querySelector('.municipality-link.active') && !group.querySelector('.zone-link.active');
+                    group.hidden = query && matches === 0 && group.textContent.toLowerCase().indexOf(query) === -1;
+                });
+            });
+        })();
+
+        (function () {
+            document.querySelectorAll('[data-sortable-table]').forEach(function (table) {
+                table.querySelectorAll('th').forEach(function (th, idx) {
+                    th.addEventListener('click', function () {
+                        var tbody = table.querySelector('tbody');
+                        var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+                        var type = th.getAttribute('data-type') || 'text';
+                        var dir = th.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+                        table.querySelectorAll('th').forEach(function (h) { h.removeAttribute('data-dir'); });
+                        th.setAttribute('data-dir', dir);
+                        rows.sort(function (a, b) {
+                            var acell = a.children[idx], bcell = b.children[idx];
+                            var av = acell.getAttribute('data-value') || acell.textContent.trim();
+                            var bv = bcell.getAttribute('data-value') || bcell.textContent.trim();
+                            if (type === 'number') {
+                                av = parseFloat(av); bv = parseFloat(bv);
+                                return dir === 'asc' ? av - bv : bv - av;
+                            }
+                            return dir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+                        });
+                        rows.forEach(function (row) { tbody.appendChild(row); });
+                    });
+                });
+            });
+        })();
+
         // Lazy-render per-service Plotly charts when the section scrolls into view.
         // Their <script> tags are emitted with type="text/plotly-defer" so the browser
         // parses but does not execute them; we revive each by cloning to text/javascript.

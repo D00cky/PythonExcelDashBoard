@@ -391,6 +391,122 @@ def test_batch_dashboard_zone_filter_narrows_polo_tabs(client, tmp_path):
     assert "Santana" in body
 
 
+def test_batch_dashboard_clean_zone_url_renders_breadcrumb(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}/zona/norte")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Dashboard Auditoria" in body
+    assert "São Paulo" in body
+    assert "Zona Norte" in body
+    assert "Escopo: Zona" in body
+    assert 'aria-label="Navegação de escopo"' in body
+    assert 'id="scope-search"' in body
+
+
+def test_batch_dashboard_clean_municipality_url_renders_single_scope(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}/zona/norte/municipio/santana")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "São Paulo" in body
+    assert "Zona Norte" in body
+    assert "Santana" in body
+    assert "Escopo: Município" in body
+    assert "/zona/norte/municipio/santana" in body
+
+
+def test_batch_dashboard_clean_scope_unknown_slug_404(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    assert client.get(f"/dashboard/{batch_id}/zona/inexistente").status_code == 404
+    assert client.get(f"/dashboard/{batch_id}/zona/norte/municipio/inexistente").status_code == 404
+
+
+def test_batch_dashboard_sidebar_lists_scope_search_and_stats(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Buscar município ou zona" in body
+    assert "municípios" in body
+    assert "/zona/leste-metropolitana/municipio/pimentas" in body
+    assert "/zona/norte/municipio/santana" in body
+
+
+def test_batch_dashboard_charts_include_download_image_config(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert '"displaylogo": false' in body
+    assert '"downloadImage"' in body
+    assert '"filename": "chart_ic_por_servico"' in body
+
+
+def test_city_dashboard_shows_zone_comparison_charts(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Comparativos do escopo" in body
+    assert "Comparação de IC por Zona" in body
+    assert "Ranking de IQS por Zona" in body
+    assert "Volume de inspeções por Zona" in body
+    assert "Tendência do período" in body
+    assert "Mapa de calor por município" in body
+
+
+def test_zone_dashboard_shows_municipality_comparison_charts(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}/zona/norte")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Comparativos do escopo" in body
+    assert "Comparação de IC por Município" in body
+    assert "Ranking de IQS por Município" in body
+    assert "Volume de inspeções por Município" in body
+    assert "Tendência do período" in body
+
+
+def test_batch_dashboard_shows_sortable_scope_ranking(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Ranking do escopo" in body
+    assert "data-sortable-table" in body
+    assert 'data-type="number">IQS' in body
+
+
+def test_dashboard_uses_scoped_export_bar(client, tmp_path):
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    response = client.get(f"/dashboard/{batch_id}/zona/norte")
+
+    assert response.status_code == 200
+    body = response.data.decode("utf-8")
+    assert "Escopo do relatório:" in body
+    assert "Exportar como:" in body
+    assert "Zona atual" in body
+    assert 'name="fmt" value="html"' in body
+    assert 'name="polos" value="SANTANA"' in body
+
+
 def test_batch_dashboard_renders_polo_tabs(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 
