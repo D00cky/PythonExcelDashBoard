@@ -123,3 +123,15 @@ def test_queued_status_written_before_work(app):
     uuid = _make_batch(app)
     jobs._write_status(app, uuid, status=jobs.JOB_QUEUED, progress=0, total=2)
     assert jobs.get_status(uuid)["status"] == jobs.JOB_QUEUED
+
+
+def test_concurrent_jobs_isolated_by_uuid(app):
+    a = _make_batch(app, "alpha")
+    b = _make_batch(app, "beta")
+    jobs.run_ingest(app, a)
+    jobs._write_status(app, b, status=jobs.JOB_FAILED, error="b broke")
+    # Each upload's state is independent (separate status file + cache dir).
+    assert jobs.get_status(a)["status"] == jobs.JOB_DONE
+    assert jobs.get_status(b)["status"] == jobs.JOB_FAILED
+    assert cache.cache_exists(a)
+    assert not cache.cache_exists(b)
