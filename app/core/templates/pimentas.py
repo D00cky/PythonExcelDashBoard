@@ -477,7 +477,10 @@ def _stage_failures_cached(path_str: str, mtime_ns: int, services: tuple[str, ..
             sub["stage"] = stage_col
             sub["code"] = stage_norm[mask].values
             sub["observation"] = (
-                sub[obs_col].where(sub[obs_col].notna(), None).astype(object)
+                # Stringify non-null cells so a mixed str/bool source column
+                # (Excel TRUE/FALSE) can't break the parquet write ingest does;
+                # missing stays None so top_observations can skip it.
+                sub[obs_col].map(lambda v: None if pd.isna(v) else str(v))
                 if obs_col is not None
                 else None
             )

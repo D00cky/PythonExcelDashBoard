@@ -243,6 +243,27 @@ def test_extract_stage_failures_blank_observation_cell_is_none_not_nan_string(tm
     assert obs is None or (isinstance(obs, float) and pd.isna(obs))
 
 
+def test_extract_stage_failures_boolean_observation_is_stringified(tmp_path):
+    """An observation cell holding a boolean (Excel TRUE/FALSE) must not leave a
+    mixed str/bool object column — otherwise the parquet write that ingest does
+    raises ArrowTypeError when several sheets are combined."""
+    wb = _new_workbook_with_capa()
+    ws = wb.create_sheet("ÁGUA")
+    ws["A1"], ws["B1"], ws["C1"] = "EQUIPE", "FACHADA", "Observação FACHADA"
+    ws["A2"], ws["B2"], ws["C2"] = "ALICE", "NC", "telhado quebrado"
+    ws["A3"], ws["B3"], ws["C3"] = "BOB", "NC", True
+    path = tmp_path / "bool_obs.xlsx"
+    wb.save(path)
+
+    failures = PimentasTemplate().extract_stage_failures(path)
+
+    # No bool objects survive: every non-null observation is a str.
+    non_null = failures["observation"].dropna()
+    assert all(isinstance(v, str) for v in non_null)
+    # And the frame round-trips through parquet (the path ingest takes).
+    failures.to_parquet(tmp_path / "bool_obs.parquet", index=False)
+
+
 def test_top_observations_skips_whitespace_only_observations():
     """A spaces-only observation has zero signal — must not surface as a 'top motivo'."""
     df = pd.DataFrame(
