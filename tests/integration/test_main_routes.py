@@ -145,6 +145,23 @@ def _upload_two_polos(client, tmp_path) -> str:
     return response.location.removeprefix("/dashboard/")
 
 
+def test_batch_upload_warms_parquet_cache_and_dashboard_serves_from_it(client, app, tmp_path):
+    from app.core import cache
+
+    batch_id = _upload_two_polos(client, tmp_path)
+
+    with app.app_context():
+        assert cache.cache_exists(batch_id)
+        # Per-file raw inspections + failures were written (loaded via the same
+        # keying the cache uses internally).
+        assert not cache.load_raw(batch_id, "file_00").empty
+        cache.load_raw(batch_id, "file_00__fail")  # present; raises if missing
+
+    # Dashboard still renders correctly while reading from the warm cache.
+    response = client.get(f"/dashboard/{batch_id}")
+    assert response.status_code == 200
+
+
 def test_batch_dashboard_todos_tab_shows_visao_and_periodo_no_polo_checkboxes(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 

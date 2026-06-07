@@ -16,11 +16,10 @@ from flask import (
 )
 from openpyxl import load_workbook
 
+from app.core import dashboard_data
 from app.core.aggregator import (
     MANIFEST_FILENAME,
     PoloBatch,
-    combined_inspections,
-    combined_stage_failures,
     date_bounds,
     discover_polo_file,
     filter_batch,
@@ -84,7 +83,21 @@ def upload():
     if not polo_files:
         abort(400)
     write_manifest(batch_dir, polo_files)
+    _warm_cache(upload_id, batch_dir)
     return redirect(url_for("main.dashboard", upload_id=upload_id), code=303)
+
+
+def _warm_cache(upload_id: str, batch_dir: Path) -> None:
+    """Pre-parse the batch into the parquet cache so the dashboard reads from
+    disk instead of re-parsing xlsx per request. Best-effort: any failure is
+    logged and swallowed — the dashboard falls back to live parsing.
+    """
+    from app.core.ingest import ingest_batch
+
+    try:
+        ingest_batch(upload_id, batch_dir)
+    except Exception:  # noqa: BLE001 — warming is optional; never break upload
+        current_app.logger.exception("cache warm failed for %s", upload_id)
 
 
 @bp.get("/dashboard/<upload_id>")
@@ -402,7 +415,7 @@ def _render_batch_dashboard(
     if not selected_polos:
         selected_polos = scope_polos
 
-    context = _build_batch_context(batch, selected_polos, view, period)
+    context = _build_batch_context(upload_id, batch, selected_polos, view, period)
     hierarchical = _build_hierarchical_tabs(
         upload_id,
         batch,
@@ -504,14 +517,15 @@ def _build_chart_context(
 
 
 def _build_batch_context(
+    uuid: str,
     batch: PoloBatch,
     polos: tuple[str, ...],
     view: str,
     period_key: str,
 ) -> dict[str, Any]:
     filtered = filter_batch(batch, polos=polos, view=view, period_key=period_key)
-    inspections = combined_inspections(filtered)
-    failures = combined_stage_failures(filtered)
+    inspections = dashboard_data.combined_inspections(uuid, filtered)
+    failures = dashboard_data.combined_stage_failures(uuid, filtered)
 
     # Pick any concrete PimentasTemplate instance for SERVICE_SHEETS + build_* methods.
     template = PimentasTemplate()
@@ -593,7 +607,7 @@ def report(upload_id: str) -> str:
         if view == "weekly"
         else (batch.months[-1] if batch.months else "")
     )
-    context = _build_batch_context(batch, selected_polos, view, period)
+    context = _build_batch_context(upload_id, batch, selected_polos, view, period)
     context["polos_included"] = list(selected_polos)
     context["per_service_sections"] = _undefer_per_service_sections(context["per_service_sections"])
     return render_template(
