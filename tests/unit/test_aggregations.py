@@ -134,6 +134,44 @@ def test_save_and_load_scope_roundtrip(ctx):
     pd.testing.assert_frame_equal(loaded.summary, scope.summary)
 
 
+def _sorted(df, key):
+    return df.sort_values(key, ignore_index=True)
+
+
+def test_combine_scopes_equals_compute_over_concat():
+    df = _frame()
+    by_polo = [agg.compute_scope(g) for _, g in df.groupby("polo")]
+    combined = agg.combine_scopes(by_polo)
+    direct = agg.compute_scope(df)
+
+    pd.testing.assert_frame_equal(
+        _sorted(combined.ic, "service"), _sorted(direct.ic, "service"), check_dtype=False
+    )
+    pd.testing.assert_frame_equal(
+        _sorted(combined.iqs, "service"), _sorted(direct.iqs, "service"), check_dtype=False
+    )
+    pd.testing.assert_frame_equal(
+        _sorted(combined.teams, "team"), _sorted(direct.teams, "team"), check_dtype=False
+    )
+    pd.testing.assert_frame_equal(combined.summary, direct.summary, check_dtype=False)
+
+
+def test_combine_scopes_empty_list():
+    combined = agg.combine_scopes([])
+    assert combined.ic.empty
+    assert int(combined.summary.iloc[0]["total_inspections"]) == 0
+
+
+def test_combine_handles_mixed_empty_and_full():
+    df = _frame()
+    full = agg.compute_scope(df[df["zone"] == "Zona Norte"])
+    empty = agg.compute_scope(df.iloc[0:0])
+    combined = agg.combine_scopes([full, empty])
+    pd.testing.assert_frame_equal(
+        _sorted(combined.ic, "service"), _sorted(full.ic, "service"), check_dtype=False
+    )
+
+
 def test_scope_keys_are_distinct(ctx):
     assert agg.scope_key_city() == "city"
     assert agg.scope_key_zone("Zona Norte") != agg.scope_key_muni("Zona Norte")
