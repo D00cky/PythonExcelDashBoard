@@ -1,9 +1,13 @@
+import re
+import unicodedata
 import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import pandas as pd
+import plotly.graph_objects as go
 from flask import (
     Blueprint,
     Response,
@@ -13,6 +17,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 from openpyxl import load_workbook
@@ -45,6 +50,8 @@ from app.core.jobs import (
     get_status,
     start_ingest_job,
 )
+from app.core.report.jobs import EXPORT_DONE, EXPORT_FAILED, get_export_status, start_export_job
+from app.core.report.scope import parse_scope
 from app.core.templates import recognize
 from app.core.templates.pimentas import (
     PimentasTemplate,
@@ -121,11 +128,9 @@ def dashboard(upload_id: str):
     # While the background ingestion runs (or after it failed), show the
     # processing page instead of the dashboard. A done job / warm cache falls
     # through to normal rendering.
-    job = get_status(upload_id)
-    if job is not None and job["status"] in (JOB_QUEUED, JOB_PROCESSING):
-        return render_template("processing.html", upload_id=upload_id, status=job)
-    if job is not None and job["status"] == JOB_FAILED:
-        return render_template("processing.html", upload_id=upload_id, status=job), 500
+    gated = _job_gate(upload_id)
+    if gated is not None:
+        return gated
 
     if kind == "batch":
         polo_arg = request.args.get("polo")
@@ -163,6 +168,54 @@ def dashboard(upload_id: str):
     )
 
 
+@bp.get("/dashboard/<upload_id>/zona/<zone_slug>")
+def dashboard_zone(upload_id: str, zone_slug: str):
+    """Zone-scoped dashboard URL from the Phase 3 production navigation."""
+    kind, target = _resolve_upload(upload_id)
+    if kind != "batch":
+        abort(404)
+    gated = _job_gate(upload_id)
+    if gated is not None:
+        return gated
+
+    batch = load_batch(target)
+    zone = _zone_from_slug(batch, zone_slug)
+    if zone is None:
+        abort(404)
+    return _render_batch_dashboard(upload_id, target, zone=zone)
+
+
+@bp.get("/dashboard/<upload_id>/zona/<zone_slug>/municipio/<municipality_slug>")
+def dashboard_municipality(upload_id: str, zone_slug: str, municipality_slug: str):
+    """Municipality/Polo-scoped dashboard URL from the Phase 3 navigation."""
+    kind, target = _resolve_upload(upload_id)
+    if kind != "batch":
+        abort(404)
+    gated = _job_gate(upload_id)
+    if gated is not None:
+        return gated
+
+    batch = load_batch(target)
+    zone = _zone_from_slug(batch, zone_slug)
+    if zone is None:
+        abort(404)
+    polo = _polo_from_slug(batch, municipality_slug, zone=zone)
+    if polo is None:
+        abort(404)
+    path = _batch_polo_path(target, polo)
+    return _render_single_polo_dashboard(upload_id, path, batch_dir=target, polo=polo)
+
+
+def _job_gate(upload_id: str):
+    """Return a processing/error response while ingestion is not usable yet."""
+    job = get_status(upload_id)
+    if job is not None and job["status"] in (JOB_QUEUED, JOB_PROCESSING):
+        return render_template("processing.html", upload_id=upload_id, status=job)
+    if job is not None and job["status"] == JOB_FAILED:
+        return render_template("processing.html", upload_id=upload_id, status=job), 500
+    return None
+
+
 def _swap_arg() -> str:
     """Normalize ?swap= into a cache-friendly key. '' = auto-detect."""
     raw = request.args.get("swap")
@@ -171,6 +224,115 @@ def _swap_arg() -> str:
     if raw == "0":
         return "0"
     return ""
+
+
+def _slug(value: str) -> str:
+    folded = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", folded.lower()).strip("-")
+
+
+def _zone_slug(zone: str) -> str:
+    slug = _slug(zone)
+    return slug.removeprefix("zona-") if slug.startswith("zona-") else slug
+
+
+def _zone_from_slug(batch: PoloBatch, slug: str) -> str | None:
+    from app.core.aggregator import polo_geography
+
+    wanted = _zone_slug(slug)
+    zones = {polo_geography(f)[1] for f in batch.files}
+    for zone in zones:
+        if _zone_slug(zone) == wanted or _slug(zone) == _slug(slug):
+            return zone
+    return None
+
+
+def _polo_from_slug(batch: PoloBatch, slug: str, *, zone: str | None = None) -> str | None:
+    from app.core.aggregator import polo_geography
+
+    wanted = _slug(slug)
+    for f in batch.files:
+        if zone is not None and polo_geography(f)[1] != zone:
+            continue
+        if _slug(f.polo) == wanted:
+            return f.polo
+    return None
+
+
+def _build_scope_sidebar(
+    upload_id: str,
+    batch: PoloBatch,
+    *,
+    active_zone: str | None,
+    active_polo: str | None,
+) -> dict[str, Any]:
+    """Navigation model for the Phase 3 city → zone → municipality sidebar."""
+    from app.core.aggregator import polo_geography
+
+    zones: dict[str, list[dict[str, str]]] = {}
+    for f in batch.files:
+        municipality, zone = polo_geography(f)
+        zones.setdefault(zone, []).append(
+            {
+                "label": f.polo.title(),
+                "municipality": municipality or f.polo.title(),
+                "href": _scope_url(upload_id, zone=zone, polo=f.polo),
+                "active": active_polo == f.polo,
+                "search_text": f"{f.polo} {municipality} {zone}".lower(),
+            }
+        )
+
+    zone_items = []
+    for zone, municipalities in sorted(zones.items()):
+        sorted_municipalities = sorted(municipalities, key=lambda m: m["label"])
+        has_active_municipality = any(m["active"] for m in sorted_municipalities)
+        zone_items.append(
+            {
+                "label": zone,
+                "href": _scope_url(upload_id, zone=zone),
+                "active": active_zone == zone and active_polo in (None, "__all"),
+                "expanded": active_zone == zone or has_active_municipality,
+                "municipalities": sorted_municipalities,
+                "count": len(sorted_municipalities),
+            }
+        )
+
+    return {
+        "city_href": _scope_url(upload_id),
+        "city_active": active_zone is None and active_polo in (None, "__all"),
+        "zones": zone_items,
+        "stats": {
+            "municipalities": len({f.polo for f in batch.files}),
+            "zones": len(zone_items),
+            "files": len(batch.files),
+        },
+    }
+
+
+def _scope_url(upload_id: str, *, zone: str | None = None, polo: str | None = None) -> str:
+    base = url_for("main.dashboard", upload_id=upload_id)
+    if zone is None:
+        return base
+    path = f"{base}/zona/{quote(_zone_slug(zone))}"
+    if polo is not None and polo != "__all":
+        path += f"/municipio/{quote(_slug(polo))}"
+    return path
+
+
+def _breadcrumb(
+    upload_id: str,
+    *,
+    zone: str | None = None,
+    municipality: str | None = None,
+    polo: str | None = None,
+) -> list[dict[str, str]]:
+    items = [{"label": "São Paulo", "href": _scope_url(upload_id)}]
+    if zone:
+        items.append({"label": zone, "href": _scope_url(upload_id, zone=zone)})
+    label = polo if polo and polo != "__all" else municipality
+    if label:
+        items.append({"label": label.title(), "href": _scope_url(upload_id, zone=zone, polo=polo)})
+    return items
 
 
 def _swap_arg_to_bool(value: str) -> bool | None:
@@ -186,11 +348,25 @@ def _batch_polo_path(batch_dir: Path, polo: str) -> Path:
     abort(404)
 
 
+def _polo_location(batch: PoloBatch, polo: str) -> tuple[str | None, str | None]:
+    """Return ``(zone, municipality)`` for a Polo inside a batch."""
+    from app.core.aggregator import polo_geography
+
+    for f in batch.files:
+        if f.polo == polo:
+            municipality, zone = polo_geography(f)
+            return zone, municipality or None
+    return None, None
+
+
 def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path, polo: str) -> str:
     """Render the legacy single-file dashboard, but tagged as one tab in a batch."""
     _open_pimentas(path)  # 404 guard; cached context below re-opens & uses workbook
 
     batch = load_batch(batch_dir)
+    derived_zone, derived_municipality = _polo_location(batch, polo)
+    active_zone = request.args.get("zone") or derived_zone
+    active_municipality = request.args.get("municipality") or derived_municipality
     filter_start = _parse_iso_date(request.args.get("start", ""))
     filter_end = _parse_iso_date(request.args.get("end", ""))
 
@@ -204,8 +380,8 @@ def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path
     hierarchical = _build_hierarchical_tabs(
         upload_id,
         batch,
-        active_zone=request.args.get("zone"),
-        active_municipality=request.args.get("municipality"),
+        active_zone=active_zone,
+        active_municipality=active_municipality,
         active_polo=polo,
     )
     return render_template(
@@ -215,9 +391,22 @@ def _render_single_polo_dashboard(upload_id: str, path: Path, *, batch_dir: Path
         zone_tabs=hierarchical["zone_tabs"],
         municipality_tabs=hierarchical["municipality_tabs"],
         polo_tabs=hierarchical["polo_tabs"],
-        active_zone=request.args.get("zone"),
-        active_municipality=request.args.get("municipality"),
+        active_zone=active_zone,
+        active_municipality=active_municipality,
         active_polo=polo,
+        breadcrumbs=_breadcrumb(
+            upload_id,
+            zone=active_zone,
+            municipality=active_municipality,
+            polo=polo,
+        ),
+        scope_level="municipality",
+        scope_sidebar=_build_scope_sidebar(
+            upload_id,
+            batch,
+            active_zone=active_zone,
+            active_polo=polo,
+        ),
         polo_query=f"polo={polo}",
         **context,
     )
@@ -286,7 +475,7 @@ def _build_hierarchical_tabs(
     zone_tabs = [
         {
             "label": "Todas as zonas",
-            "href": f"{base}?polo=__all",
+            "href": _scope_url(upload_id),
             "active": active_zone is None and active_polo in (None, "__all"),
         }
     ]
@@ -294,7 +483,7 @@ def _build_hierarchical_tabs(
         zone_tabs.append(
             {
                 "label": z,
-                "href": f"{base}?zone={z}",
+                "href": _scope_url(upload_id, zone=z),
                 "active": active_zone == z and active_municipality is None,
             }
         )
@@ -308,7 +497,7 @@ def _build_hierarchical_tabs(
             municipality_tabs.append(
                 {
                     "label": "Todas",
-                    "href": f"{base}?zone={active_zone}",
+                    "href": _scope_url(upload_id, zone=active_zone),
                     "active": active_municipality is None,
                 }
             )
@@ -335,16 +524,12 @@ def _build_hierarchical_tabs(
         )
         if len(polos_in_scope) > 1 or active_polo:
             for p in polos_in_scope:
-                href_parts = []
-                if active_zone:
-                    href_parts.append(f"zone={active_zone}")
-                if active_municipality:
-                    href_parts.append(f"municipality={active_municipality}")
-                href_parts.append(f"polo={p}")
                 polo_tabs.append(
                     {
                         "label": p.title(),
-                        "href": f"{base}?{'&'.join(href_parts)}",
+                        "href": _scope_url(upload_id, zone=active_zone, polo=p)
+                        if active_zone
+                        else f"{base}?polo={p}",
                         "active": active_polo == p,
                     }
                 )
@@ -439,7 +624,8 @@ def _render_batch_dashboard(
     if not selected_polos:
         selected_polos = scope_polos
 
-    context = _build_batch_context(upload_id, batch, selected_polos, view, period)
+    scope_level = "zone" if zone else "city"
+    context = _build_batch_context(upload_id, batch, selected_polos, view, period, scope_level)
     hierarchical = _build_hierarchical_tabs(
         upload_id,
         batch,
@@ -466,6 +652,19 @@ def _render_batch_dashboard(
             "selected_period": period,
             "view": view,
             "is_batch": True,
+            "breadcrumbs": _breadcrumb(
+                upload_id,
+                zone=zone,
+                municipality=municipality,
+                polo=None,
+            ),
+            "scope_level": scope_level,
+            "scope_sidebar": _build_scope_sidebar(
+                upload_id,
+                batch,
+                active_zone=zone,
+                active_polo="__all",
+            ),
         }
     )
     return render_template("dashboard.html", **context)
@@ -490,11 +689,15 @@ def _build_chart_context(
     services = sorted(template.SERVICE_SHEETS)
     per_service_sections = []
     for idx, service in enumerate(services):
-        team_html = template.build_team_conformity_for_service(inspections, service).to_html(
-            include_plotlyjs=False, full_html=False, div_id=f"conf-team-{idx}"
+        team_html = _chart_html(
+            template.build_team_conformity_for_service(inspections, service),
+            div_id=f"conf-team-{idx}",
+            filename=f"chart_conformidade_equipe_{idx}",
         )
-        tss_html = template.build_tss_conformity_for_service(inspections, service).to_html(
-            include_plotlyjs=False, full_html=False, div_id=f"conf-tss-{idx}"
+        tss_html = _chart_html(
+            template.build_tss_conformity_for_service(inspections, service),
+            div_id=f"conf-tss-{idx}",
+            filename=f"chart_conformidade_tss_{idx}",
         )
         per_service_sections.append(
             {
@@ -507,27 +710,43 @@ def _build_chart_context(
         "iqs_overall": iqs_overall,
         "total_fotos": sum(r.fotos_avaliadas for r in iqs_rows),
         "total_inspections": len(inspections),
-        "fig_ic_bar": template.build_ic_bar(ic_rows).to_html(
-            include_plotlyjs=False, full_html=False, div_id="ic-bar"
+        "fig_ic_bar": _chart_html(
+            template.build_ic_bar(ic_rows),
+            div_id="ic-bar",
+            filename="chart_ic_por_servico",
         ),
-        "fig_iqs_bar": template.build_service_iqs_bar(iqs_rows).to_html(
-            include_plotlyjs=False, full_html=False, div_id="iqs-bar"
+        "fig_iqs_bar": _chart_html(
+            template.build_service_iqs_bar(iqs_rows),
+            div_id="iqs-bar",
+            filename="chart_iqs_por_servico",
         ),
-        "fig_photos": template.build_photo_conformity_stacked(iqs_rows).to_html(
-            include_plotlyjs=False, full_html=False, div_id="photos"
+        "fig_photos": _chart_html(
+            template.build_photo_conformity_stacked(iqs_rows),
+            div_id="photos",
+            filename="chart_fotos_conformidade",
         ),
-        "fig_team_service": template.build_team_service_stacked(inspections).to_html(
-            include_plotlyjs=False, full_html=False, div_id="team-service"
+        "fig_team_service": _chart_html(
+            template.build_team_service_stacked(inspections),
+            div_id="team-service",
+            filename="chart_equipe_servico",
         ),
-        "fig_tss": template.build_tss_distribution(inspections).to_html(
-            include_plotlyjs=False, full_html=False, div_id="tss-distribution"
+        "fig_tss": _chart_html(
+            template.build_tss_distribution(inspections),
+            div_id="tss-distribution",
+            filename="chart_tss_distribuicao",
         ),
-        "fig_failing_stages": template.build_top_failing_stages(failures).to_html(
-            include_plotlyjs=False, full_html=False, div_id="failing-stages"
+        "fig_failing_stages": _chart_html(
+            template.build_top_failing_stages(failures),
+            div_id="failing-stages",
+            filename="chart_etapas_falha",
         ),
-        "fig_worst_teams": template.build_worst_teams(inspections).to_html(
-            include_plotlyjs=False, full_html=False, div_id="worst-teams"
+        "fig_worst_teams": _chart_html(
+            template.build_worst_teams(inspections),
+            div_id="worst-teams",
+            filename="chart_equipes_criticas",
         ),
+        "scope_charts": [],
+        "scope_rankings": [],
         "top_nc_observations": top_observations(failures, "NC"),
         "top_sf_observations": top_observations(failures, "SF"),
         "total_failing_os": int(inspections["nao_conforme_count"].sum())
@@ -540,12 +759,33 @@ def _build_chart_context(
     }
 
 
+def _chart_html(fig, *, div_id: str, filename: str) -> str:
+    """Render a Plotly figure with the dashboard's shared interaction config."""
+    return fig.to_html(
+        include_plotlyjs=False,
+        full_html=False,
+        div_id=div_id,
+        config={
+            "displaylogo": False,
+            "modeBarButtonsToAdd": ["downloadImage"],
+            "toImageButtonOptions": {
+                "format": "png",
+                "width": 1200,
+                "height": 600,
+                "scale": 2,
+                "filename": filename,
+            },
+        },
+    )
+
+
 def _build_batch_context(
     uuid: str,
     batch: PoloBatch,
     polos: tuple[str, ...],
     view: str,
     period_key: str,
+    scope_level: str = "city",
 ) -> dict[str, Any]:
     filtered = filter_batch(batch, polos=polos, view=view, period_key=period_key)
     inspections = dashboard_data.combined_inspections(uuid, filtered)
@@ -572,9 +812,281 @@ def _build_batch_context(
             "swap_dates": False,
             "recomputed": True,
             "span_warning": None,
+            "scope_charts": _scope_charts(inspections, scope_level=scope_level),
+            "scope_rankings": _scope_rankings(inspections, scope_level=scope_level),
         }
     )
     return context
+
+
+def _scope_charts(inspections: pd.DataFrame, *, scope_level: str) -> list[dict[str, str]]:
+    """Comparison charts for city and zone dashboard scopes."""
+    if scope_level == "city":
+        return [
+            *_comparison_charts(inspections, group_col="zone", label="Zona"),
+            _trend_chart(inspections),
+            _treemap_chart(inspections),
+        ]
+    if scope_level == "zone":
+        return [
+            *_comparison_charts(inspections, group_col="polo", label="Município"),
+            _trend_chart(inspections),
+        ]
+    return []
+
+
+def _scope_rankings(inspections: pd.DataFrame, *, scope_level: str) -> list[dict[str, Any]]:
+    """Sortable ranking table rows for city/zone scope dashboards."""
+    if scope_level == "city":
+        return _ranking_rows(inspections, group_col="zone")
+    if scope_level == "zone":
+        return _ranking_rows(inspections, group_col="polo")
+    return []
+
+
+def _ranking_rows(inspections: pd.DataFrame, *, group_col: str) -> list[dict[str, Any]]:
+    if inspections.empty or group_col not in inspections.columns:
+        return []
+    grouped = _scope_grouped_metrics(inspections, group_col=group_col)
+    return [
+        {
+            "label": row[group_col],
+            "ic_pct": row["ic"],
+            "iqs_pct": row["iqs"],
+            "inspections": int(row["inspecoes"]),
+            "photos": int(row["fotos"]),
+        }
+        for row in grouped.sort_values("iqs", ascending=False).to_dict("records")
+    ]
+
+
+def _comparison_charts(
+    inspections: pd.DataFrame,
+    *,
+    group_col: str,
+    label: str,
+) -> list[dict[str, str]]:
+    if inspections.empty or group_col not in inspections.columns:
+        return []
+    grouped = _scope_grouped_metrics(inspections, group_col=group_col)
+    grouped = grouped.sort_values("ic", ascending=False)
+    return [
+        {
+            "title": f"Comparação de IC por {label}",
+            "chart": _chart_html(
+                _comparison_bar(grouped, group_col=group_col, metric="ic", label=label),
+                div_id=f"scope-ic-{group_col}",
+                filename=f"chart_ic_por_{_slug(label)}",
+            ),
+        },
+        {
+            "title": f"Ranking de IQS por {label}",
+            "chart": _chart_html(
+                _comparison_bar(grouped, group_col=group_col, metric="iqs", label=label),
+                div_id=f"scope-iqs-{group_col}",
+                filename=f"chart_iqs_por_{_slug(label)}",
+            ),
+        },
+        {
+            "title": f"Volume de inspeções por {label}",
+            "chart": _chart_html(
+                _volume_bar(grouped, group_col=group_col, label=label),
+                div_id=f"scope-volume-{group_col}",
+                filename=f"chart_volume_por_{_slug(label)}",
+            ),
+        },
+    ]
+
+
+def _scope_grouped_metrics(inspections: pd.DataFrame, *, group_col: str) -> pd.DataFrame:
+    grouped = (
+        inspections.groupby(group_col, dropna=False)
+        .agg(
+            inspecoes=("conforme_count", "size"),
+            conforme=("conforme_count", "sum"),
+            fotos=("photo_total", "sum"),
+            fotos_conforme=("photo_conforme", "sum"),
+        )
+        .reset_index()
+    )
+    grouped[group_col] = grouped[group_col].fillna("Sem classificação").astype(str)
+    grouped["ic"] = grouped["conforme"] / grouped["inspecoes"]
+    grouped["iqs"] = grouped["fotos_conforme"] / grouped["fotos"].where(grouped["fotos"] > 0)
+    grouped["iqs"] = grouped["iqs"].fillna(0)
+    return grouped
+
+
+def _comparison_bar(
+    grouped: pd.DataFrame,
+    *,
+    group_col: str,
+    metric: str,
+    label: str,
+) -> go.Figure:
+    ordered = grouped.sort_values(metric, ascending=True).tail(20)
+    title_metric = "IC" if metric == "ic" else "IQS"
+    values = ordered[metric].tolist()
+    names = ordered[group_col].tolist()
+    return go.Figure(
+        data=[
+            go.Bar(
+                x=values,
+                y=names,
+                orientation="h",
+                marker_color="#f97316" if metric == "ic" else "#22c55e",
+                text=[f"{v:.1%}" for v in values],
+                textposition="outside",
+            )
+        ],
+        layout=go.Layout(
+            title=f"{title_metric} por {label}",
+            xaxis={"title": title_metric, "tickformat": ".0%", "range": [0, 1.05]},
+            yaxis={"title": label, "automargin": True},
+            template="polo_dark",
+            height=max(360, 34 * len(names) + 120),
+            margin={"r": 90},
+        ),
+    )
+
+
+def _trend_chart(inspections: pd.DataFrame) -> dict[str, str]:
+    if inspections.empty or "start_date" not in inspections.columns:
+        fig = _empty_scope_figure("Sem datas para tendência")
+    else:
+        dated = inspections.dropna(subset=["start_date"]).copy()
+        if dated.empty:
+            fig = _empty_scope_figure("Sem datas para tendência")
+        else:
+            dated["period"] = dated["start_date"].dt.to_period("D").dt.to_timestamp()
+            grouped = (
+                dated.groupby("period")
+                .agg(
+                    inspecoes=("conforme_count", "size"),
+                    conforme=("conforme_count", "sum"),
+                    fotos=("photo_total", "sum"),
+                    fotos_conforme=("photo_conforme", "sum"),
+                )
+                .reset_index()
+                .sort_values("period")
+            )
+            grouped["ic"] = grouped["conforme"] / grouped["inspecoes"]
+            grouped["iqs"] = grouped["fotos_conforme"] / grouped["fotos"].where(
+                grouped["fotos"] > 0
+            )
+            grouped["iqs"] = grouped["iqs"].fillna(0)
+            fig = go.Figure(
+                data=[
+                    go.Scatter(
+                        x=grouped["period"],
+                        y=grouped["iqs"],
+                        mode="lines+markers",
+                        name="IQS",
+                        line={"color": "#22c55e", "width": 3},
+                    ),
+                    go.Scatter(
+                        x=grouped["period"],
+                        y=grouped["ic"],
+                        mode="lines+markers",
+                        name="IC",
+                        line={"color": "#f97316", "width": 3},
+                    ),
+                ],
+                layout=go.Layout(
+                    title="Tendência diária de IC e IQS",
+                    xaxis={"title": "Data"},
+                    yaxis={"title": "Percentual", "tickformat": ".0%", "range": [0, 1.05]},
+                    template="polo_dark",
+                    height=380,
+                ),
+            )
+    return {
+        "title": "Tendência do período",
+        "chart": _chart_html(fig, div_id="scope-trend", filename="chart_tendencia_escopo"),
+    }
+
+
+def _treemap_chart(inspections: pd.DataFrame) -> dict[str, str]:
+    if inspections.empty or not {"zone", "polo"}.issubset(inspections.columns):
+        fig = _empty_scope_figure("Sem municípios para mapa")
+    else:
+        grouped = _scope_grouped_metrics(inspections, group_col="polo")
+        zone_map = (
+            inspections.groupby("polo")["zone"]
+            .agg(lambda s: s.dropna().astype(str).mode().iloc[0] if not s.dropna().empty else "")
+            .to_dict()
+        )
+        grouped["zone"] = grouped["polo"].map(zone_map).fillna("Sem classificação")
+        fig = go.Figure(
+            data=[
+                go.Treemap(
+                    labels=grouped["polo"],
+                    parents=grouped["zone"],
+                    values=grouped["inspecoes"],
+                    marker={
+                        "colors": grouped["iqs"],
+                        "colorscale": "RdYlGn",
+                        "cmin": 0,
+                        "cmax": 1,
+                        "colorbar": {"title": "IQS"},
+                    },
+                    texttemplate="%{label}<br>%{value} inspeções",
+                )
+            ],
+            layout=go.Layout(
+                title="Mapa de calor por município",
+                template="polo_dark",
+                height=460,
+            ),
+        )
+    return {
+        "title": "Mapa de calor por município",
+        "chart": _chart_html(fig, div_id="scope-treemap", filename="chart_mapa_municipios"),
+    }
+
+
+def _empty_scope_figure(message: str) -> go.Figure:
+    return go.Figure(
+        layout=go.Layout(
+            template="polo_dark",
+            annotations=[
+                {
+                    "text": message,
+                    "showarrow": False,
+                    "xref": "paper",
+                    "yref": "paper",
+                    "x": 0.5,
+                    "y": 0.5,
+                    "font": {"size": 14, "color": "#a1a1aa"},
+                }
+            ],
+        )
+    )
+
+
+def _volume_bar(grouped: pd.DataFrame, *, group_col: str, label: str) -> go.Figure:
+    ordered = grouped.sort_values("inspecoes", ascending=True).tail(20)
+    values = ordered["inspecoes"].astype(int).tolist()
+    names = ordered[group_col].tolist()
+    return go.Figure(
+        data=[
+            go.Bar(
+                x=values,
+                y=names,
+                orientation="h",
+                marker_color="#0ea5e9",
+                text=values,
+                textposition="outside",
+            )
+        ],
+        layout=go.Layout(
+            title=f"Inspeções por {label}",
+            xaxis={"title": "Inspeções"},
+            yaxis={"title": label, "automargin": True},
+            template="polo_dark",
+            height=max(360, 34 * len(names) + 120),
+            margin={"r": 90},
+        ),
+    )
 
 
 @bp.get("/report/<upload_id>")
@@ -767,6 +1279,48 @@ def _download_batch(upload_id: str, batch_dir: Path, fmt: str) -> Response:
     response = Response(body, mimetype=mimetype)
     response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
     return response
+
+
+@bp.post("/export/<upload_id>")
+def export_report(upload_id: str):
+    """Create a scoped report export job and redirect to its status page."""
+    kind, target = _resolve_upload(upload_id)
+    if kind != "batch":
+        abort(400)
+    _ = target
+    fmt = request.form.get("fmt", "html").lower()
+    if fmt not in {"html", "docx", "pdf", "pptx"}:
+        abort(400)
+    scope = parse_scope(request.form.get("scope"))
+    scope_name = (request.form.get("scope_name") or "").strip() or None
+    period = (request.form.get("period") or "").strip()
+    job_id = start_export_job(
+        current_app._get_current_object(),
+        upload_id,
+        fmt=fmt,
+        scope=scope,
+        scope_name=scope_name,
+        period=period,
+    )
+    return redirect(url_for("main.export_status", job_id=job_id), code=303)
+
+
+@bp.get("/export/status/<job_id>")
+def export_status(job_id: str):
+    """Show export job status, or send the finished file."""
+    status = get_export_status(current_app._get_current_object(), job_id)
+    if status is None:
+        abort(404)
+    if status["status"] == EXPORT_DONE:
+        return send_file(
+            status["path"],
+            mimetype=status["mimetype"],
+            as_attachment=True,
+            download_name=status["download_name"],
+        )
+    if status["status"] == EXPORT_FAILED:
+        return render_template("export_error.html", status=status), 500
+    return render_template("export_generating.html", job_id=job_id, status=status)
 
 
 def _upload_path(upload_id: str) -> Path:
