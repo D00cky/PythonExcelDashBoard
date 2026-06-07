@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processando — Dashboard</title>
+    <style>
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #264653 0%, #2a9d8f 100%);
+            display: flex; align-items: center; justify-content: center;
+            padding: 2rem; color: #1a1a1a;
+        }
+        .container {
+            background: white; max-width: 560px; width: 100%;
+            padding: 2.75rem 2.5rem; border-radius: 18px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25); text-align: center;
+        }
+        h1 { font-size: 1.8rem; color: #264653; margin: 0 0 0.3rem; letter-spacing: -0.02em; }
+        .subtitle { color: #666; margin: 0 0 1.75rem; font-size: 1rem; }
+        .bar { background: #e6efed; border-radius: 999px; height: 18px; overflow: hidden; }
+        .bar > span {
+            display: block; height: 100%; width: 0%;
+            background: linear-gradient(90deg, #2a9d8f, #264653);
+            transition: width 0.4s ease-out;
+        }
+        .counts { margin-top: 0.7rem; font-size: 1.25rem; font-weight: 700; color: #264653; }
+        .current { color: #2a9d8f; font-weight: 600; min-height: 1.4em; margin-top: 0.4rem; }
+        .timing { color: #888; font-size: 0.9rem; margin-top: 1rem; }
+        .spinner {
+            width: 38px; height: 38px; margin: 0 auto 1.25rem;
+            border: 4px solid #e6efed; border-top-color: #2a9d8f; border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error { display: none; }
+        .error.show { display: block; }
+        .error h1 { color: #b14732; }
+        .error .msg {
+            background: #fdeceaff; color: #8a2c1a; border-radius: 10px;
+            padding: 0.9rem 1rem; font-size: 0.92rem; margin: 1rem 0 1.5rem; word-break: break-word;
+        }
+        .live { display: block; }
+        .live.hidden { display: none; }
+        button {
+            padding: 0.9rem 2rem; background: linear-gradient(135deg, #2a9d8f 0%, #264653 100%);
+            color: white; border: none; border-radius: 12px; font-size: 1.05rem;
+            font-weight: 600; cursor: pointer;
+        }
+        button:hover { transform: translateY(-2px); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="live" id="live">
+            <div class="spinner"></div>
+            <h1>Processando dados…</h1>
+            <p class="subtitle">Lendo e indexando as planilhas do batch</p>
+            <div class="bar"><span id="bar-fill"></span></div>
+            <div class="counts"><span id="progress">0</span> / <span id="total">?</span> arquivos</div>
+            <div class="current" id="current"></div>
+            <div class="timing" id="timing"></div>
+        </div>
+        <div class="error" id="error">
+            <h1>Falha no processamento</h1>
+            <div class="msg" id="error-msg"></div>
+            <form method="post" action="/retry/{{ upload_id }}">
+                <button type="submit">Tentar novamente</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            var uuid = {{ upload_id | tojson }};
+            var live = document.getElementById('live');
+            var errBox = document.getElementById('error');
+
+            function fmt(s) {
+                if (s == null) return '—';
+                s = Math.round(s);
+                var m = Math.floor(s / 60), sec = s % 60;
+                return (m < 10 ? '0' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+            }
+
+            function render(d) {
+                if (d.status === 'done') { window.location.href = '/dashboard/' + uuid; return; }
+                if (d.status === 'failed') {
+                    live.classList.add('hidden');
+                    errBox.classList.add('show');
+                    document.getElementById('error-msg').textContent = d.error || 'Erro desconhecido';
+                    return;
+                }
+                var total = d.total || 0, progress = d.progress || 0;
+                var pct = total ? Math.round(progress / total * 100) : 0;
+                document.getElementById('bar-fill').style.width = pct + '%';
+                document.getElementById('progress').textContent = progress;
+                document.getElementById('total').textContent = total || '?';
+                var cur = '';
+                if (d.current_zone) cur += d.current_zone;
+                if (d.current_polo) cur += (cur ? ' → ' : '') + d.current_polo;
+                document.getElementById('current').textContent = cur;
+                document.getElementById('timing').textContent =
+                    '⏱ ' + fmt(d.elapsed_seconds) + ' decorridos' +
+                    (d.estimated_remaining != null ? ' · ~' + fmt(d.estimated_remaining) + ' restante' : '');
+            }
+
+            function poll() {
+                fetch('/api/status/' + uuid, { cache: 'no-store' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (d) { if (d) render(d); })
+                    .catch(function () {});
+            }
+            poll();
+            setInterval(poll, 2000);
+        })();
+    </script>
+</body>
+</html>
