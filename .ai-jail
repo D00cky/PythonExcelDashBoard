@@ -3,8 +3,9 @@
 # Edit freely. Regenerate with: ai-jail --clean --init
 
 command = [
-    "claude",
+    "codex",
     "resume",
+    "25d209d5-297d-40ab-a135-82cea3214fa1",
 ]
 rw_maps = []
 ro_maps = []
