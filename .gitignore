@@ -12,3 +12,6 @@ instance/
 build/
 dist/
 .DS_Store
+
+# Local toolchain (uv + standalone Python), not for commit
+.uvtools/
