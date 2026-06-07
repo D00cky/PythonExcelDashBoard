@@ -162,6 +162,61 @@ def test_batch_upload_warms_parquet_cache_and_dashboard_serves_from_it(client, a
     assert response.status_code == 200
 
 
+def test_api_status_404_for_unknown_upload(client):
+    assert client.get("/api/status/nope").status_code == 404
+
+
+def test_dashboard_shows_processing_page_while_job_active(client, app, tmp_path):
+    import time
+
+    from app.core import jobs
+
+    batch_id = _upload_two_polos(client, tmp_path)  # completes sync under TESTING
+    # Simulate an in-flight job by overwriting the status file.
+    with app.app_context():
+        jobs._write_status(
+            app,
+            batch_id,
+            status=jobs.JOB_PROCESSING,
+            progress=1,
+            total=2,
+            current_polo="PIMENTAS",
+            current_zone="Zona Leste Metropolitana",
+            started_at=time.time() - 5,
+        )
+
+    page = client.get(f"/dashboard/{batch_id}")
+    assert page.status_code == 200
+    assert b"Processando" in page.data
+
+    status = client.get(f"/api/status/{batch_id}")
+    assert status.status_code == 200
+    body = status.get_json()
+    assert body["status"] == "processing"
+    assert body["total"] == 2
+    assert body["estimated_remaining"] is not None
+
+
+def test_failed_job_renders_error_and_retry_recovers(client, app, tmp_path):
+    from app.core import cache, jobs
+
+    batch_id = _upload_two_polos(client, tmp_path)
+    with app.app_context():
+        jobs._write_status(app, batch_id, status=jobs.JOB_FAILED, error="boom")
+
+    failed = client.get(f"/dashboard/{batch_id}")
+    assert failed.status_code == 500
+    assert b"Falha no processamento" in failed.data
+
+    # Retry re-runs ingestion (sync under TESTING) and redirects back.
+    retried = client.post(f"/retry/{batch_id}")
+    assert retried.status_code == 303
+    with app.app_context():
+        assert jobs.get_status(batch_id)["status"] == jobs.JOB_DONE
+        assert cache.cache_exists(batch_id)
+    assert client.get(f"/dashboard/{batch_id}").status_code == 200
+
+
 def test_batch_dashboard_todos_tab_shows_visao_and_periodo_no_polo_checkboxes(client, tmp_path):
     batch_id = _upload_two_polos(client, tmp_path)
 

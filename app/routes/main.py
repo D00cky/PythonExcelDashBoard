@@ -9,6 +9,7 @@ from flask import (
     Response,
     abort,
     current_app,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -37,6 +38,13 @@ from app.core.aggregator import (
     iqs_rows_from_inspections as _iqs_rows_from_inspections,
 )
 from app.core.exporters import render_export
+from app.core.jobs import (
+    JOB_FAILED,
+    JOB_PROCESSING,
+    JOB_QUEUED,
+    get_status,
+    start_ingest_job,
+)
 from app.core.templates import recognize
 from app.core.templates.pimentas import (
     PimentasTemplate,
@@ -83,26 +91,42 @@ def upload():
     if not polo_files:
         abort(400)
     write_manifest(batch_dir, polo_files)
-    _warm_cache(upload_id, batch_dir)
+    # Parse the batch into the parquet cache off the request path; the dashboard
+    # shows a processing page (polling /api/status) until it's ready.
+    start_ingest_job(upload_id)
     return redirect(url_for("main.dashboard", upload_id=upload_id), code=303)
 
 
-def _warm_cache(upload_id: str, batch_dir: Path) -> None:
-    """Pre-parse the batch into the parquet cache so the dashboard reads from
-    disk instead of re-parsing xlsx per request. Best-effort: any failure is
-    logged and swallowed — the dashboard falls back to live parsing.
-    """
-    from app.core.ingest import ingest_batch
+@bp.get("/api/status/<upload_id>")
+def api_status(upload_id: str) -> Response:
+    """JSON ingestion status for the processing page's poller; 404 if unknown."""
+    status = get_status(upload_id)
+    if status is None:
+        abort(404)
+    return jsonify(status)
 
-    try:
-        ingest_batch(upload_id, batch_dir)
-    except Exception:  # noqa: BLE001 — warming is optional; never break upload
-        current_app.logger.exception("cache warm failed for %s", upload_id)
+
+@bp.post("/retry/<upload_id>")
+def retry(upload_id: str):
+    """Re-run a failed (or any) ingestion and return to the dashboard."""
+    _resolve_upload(upload_id)  # 404 if the upload is gone
+    start_ingest_job(upload_id)
+    return redirect(url_for("main.dashboard", upload_id=upload_id), code=303)
 
 
 @bp.get("/dashboard/<upload_id>")
-def dashboard(upload_id: str) -> str:
+def dashboard(upload_id: str):
     kind, target = _resolve_upload(upload_id)
+
+    # While the background ingestion runs (or after it failed), show the
+    # processing page instead of the dashboard. A done job / warm cache falls
+    # through to normal rendering.
+    job = get_status(upload_id)
+    if job is not None and job["status"] in (JOB_QUEUED, JOB_PROCESSING):
+        return render_template("processing.html", upload_id=upload_id, status=job)
+    if job is not None and job["status"] == JOB_FAILED:
+        return render_template("processing.html", upload_id=upload_id, status=job), 500
+
     if kind == "batch":
         polo_arg = request.args.get("polo")
         zone_arg = request.args.get("zone")
