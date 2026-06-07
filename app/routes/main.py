@@ -17,6 +17,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 from openpyxl import load_workbook
@@ -49,6 +50,8 @@ from app.core.jobs import (
     get_status,
     start_ingest_job,
 )
+from app.core.report.jobs import EXPORT_DONE, EXPORT_FAILED, get_export_status, start_export_job
+from app.core.report.scope import parse_scope
 from app.core.templates import recognize
 from app.core.templates.pimentas import (
     PimentasTemplate,
@@ -1276,6 +1279,48 @@ def _download_batch(upload_id: str, batch_dir: Path, fmt: str) -> Response:
     response = Response(body, mimetype=mimetype)
     response.headers["Content-Disposition"] = f'attachment; filename="dashboard-{upload_id}.{fmt}"'
     return response
+
+
+@bp.post("/export/<upload_id>")
+def export_report(upload_id: str):
+    """Create a scoped report export job and redirect to its status page."""
+    kind, target = _resolve_upload(upload_id)
+    if kind != "batch":
+        abort(400)
+    _ = target
+    fmt = request.form.get("fmt", "html").lower()
+    if fmt not in {"html", "docx", "pdf", "pptx"}:
+        abort(400)
+    scope = parse_scope(request.form.get("scope"))
+    scope_name = (request.form.get("scope_name") or "").strip() or None
+    period = (request.form.get("period") or "").strip()
+    job_id = start_export_job(
+        current_app._get_current_object(),
+        upload_id,
+        fmt=fmt,
+        scope=scope,
+        scope_name=scope_name,
+        period=period,
+    )
+    return redirect(url_for("main.export_status", job_id=job_id), code=303)
+
+
+@bp.get("/export/status/<job_id>")
+def export_status(job_id: str):
+    """Show export job status, or send the finished file."""
+    status = get_export_status(current_app._get_current_object(), job_id)
+    if status is None:
+        abort(404)
+    if status["status"] == EXPORT_DONE:
+        return send_file(
+            status["path"],
+            mimetype=status["mimetype"],
+            as_attachment=True,
+            download_name=status["download_name"],
+        )
+    if status["status"] == EXPORT_FAILED:
+        return render_template("export_error.html", status=status), 500
+    return render_template("export_generating.html", job_id=job_id, status=status)
 
 
 def _upload_path(upload_id: str) -> Path:
